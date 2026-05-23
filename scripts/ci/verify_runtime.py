@@ -3,7 +3,13 @@ from __future__ import annotations
 import importlib
 import sys
 
-from app.main import create_app
+# Optional imports with graceful degradation
+try:
+    from app.main import create_app
+except ImportError as exc:
+    print(f"ERROR: Failed to import app.main: {exc}")
+    print("This usually indicates missing dependencies or import errors.")
+    sys.exit(1)
 
 
 REQUIRED_IMPORTS = [
@@ -35,6 +41,7 @@ def main() -> int:
         print(f"ERROR: {len(failed_imports)} required imports failed")
         for module_name, error in failed_imports:
             print(f"  - {module_name}: {error}")
+        print("\nRemediation: Ensure all dependencies are installed via requirements-dev.txt")
         return 1
 
     try:
@@ -47,6 +54,8 @@ def main() -> int:
         return 0
     except Exception as exc:
         print(f"ERROR: Failed to create app: {exc}")
+        import traceback
+        traceback.print_exc()
         return 1
 
 

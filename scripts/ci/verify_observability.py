@@ -4,9 +4,20 @@ import json
 import sys
 from pathlib import Path
 
-from prometheus_client import REGISTRY
+# Optional imports with graceful degradation
+try:
+    from prometheus_client import REGISTRY
+except ImportError as exc:
+    print(f"ERROR: Failed to import prometheus_client: {exc}")
+    print("Remediation: Ensure prometheus-client is installed via requirements-dev.txt")
+    sys.exit(1)
 
-from app.main import create_app
+try:
+    from app.main import create_app
+except ImportError as exc:
+    print(f"ERROR: Failed to import app.main: {exc}")
+    print("This usually indicates missing dependencies or import errors.")
+    sys.exit(1)
 
 
 REQUIRED_METRICS = {
@@ -52,6 +63,8 @@ def main() -> int:
         app = create_app()
     except Exception as exc:
         print(f"ERROR: Failed to create app: {exc}")
+        import traceback
+        traceback.print_exc()
         return 1
 
     paths = {route.path for route in app.routes}

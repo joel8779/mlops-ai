@@ -60,9 +60,6 @@ jobs:
           python -m compileall app
           python -m ruff check app
 
-      - name: Import validation
-        run: python scripts/ci/validate_imports.py
-
       - name: Dependency sync validation
         run: python scripts/ci/sync_dependencies.py
 

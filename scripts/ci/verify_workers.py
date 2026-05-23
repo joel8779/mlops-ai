@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import sys
 
+# Optional imports with graceful degradation
 try:
     import app.workers.job_tasks  # noqa: F401
     import app.workers.resume_tasks  # noqa: F401
     from app.workers.celery_app import celery_app
 except ImportError as exc:
     print(f"ERROR: Failed to import worker modules: {exc}")
+    print("This usually indicates missing dependencies or import errors.")
+    print("Remediation: Ensure Celery and worker dependencies are installed via requirements-dev.txt")
     sys.exit(1)
 
 
@@ -19,6 +22,8 @@ def main() -> int:
         task_names = set(celery_app.tasks.keys())
     except Exception as exc:
         print(f"ERROR: Failed to get Celery tasks: {exc}")
+        import traceback
+        traceback.print_exc()
         return 1
     
     missing = sorted(REQUIRED_TASKS - task_names)
