@@ -25,7 +25,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r apps/api/requirements-dev.txt
       - name: Bandit
-        run: bandit -r apps/api/app -x apps/api/app/tests -c .bandit -lll
+        run: bandit -r apps/api/app -x apps/api/app/tests -lll
       - name: pip-audit
         run: pip-audit -r apps/api/requirements.txt --format json --output pip-audit.json || true
       - uses: actions/upload-artifact@v5
