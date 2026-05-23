@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import sys
 
 from app.main import create_app
 
@@ -19,17 +20,35 @@ REQUIRED_IMPORTS = [
 
 
 def main() -> int:
+    failed_imports = []
     for module_name in REQUIRED_IMPORTS:
-        importlib.import_module(module_name)
+        try:
+            importlib.import_module(module_name)
+        except ImportError as exc:
+            failed_imports.append((module_name, str(exc)))
+            print(f"WARNING: Failed to import {module_name}: {exc}")
+        except Exception as exc:
+            failed_imports.append((module_name, str(exc)))
+            print(f"WARNING: Error importing {module_name}: {exc}")
 
-    app = create_app()
-    route_count = len(app.routes)
-    if route_count < 10:
-        print(f"Unexpectedly low FastAPI route count: {route_count}")
+    if failed_imports:
+        print(f"ERROR: {len(failed_imports)} required imports failed")
+        for module_name, error in failed_imports:
+            print(f"  - {module_name}: {error}")
         return 1
-    print(f"Runtime import/startup verification: OK ({route_count} app routes)")
-    return 0
+
+    try:
+        app = create_app()
+        route_count = len(app.routes)
+        if route_count < 10:
+            print(f"ERROR: Unexpectedly low FastAPI route count: {route_count}")
+            return 1
+        print(f"Runtime import/startup verification: OK ({route_count} app routes)")
+        return 0
+    except Exception as exc:
+        print(f"ERROR: Failed to create app: {exc}")
+        return 1
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())
