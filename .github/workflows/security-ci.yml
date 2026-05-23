@@ -25,7 +25,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r apps/api/requirements-dev.txt
       - name: Bandit
-        run: bandit -r apps/api/app -x apps/api/app/tests -ll
+        run: bandit -r apps/api/app -x apps/api/app/tests -c .bandit -lll
       - name: pip-audit
         run: pip-audit -r apps/api/requirements.txt --format json --output pip-audit.json || true
       - uses: actions/upload-artifact@v5
@@ -37,9 +37,6 @@ jobs:
 
   frontend-security:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/web
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -47,8 +44,10 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
-      - run: npm ci
-      - run: npm audit --audit-level=moderate --production || true
+      - working-directory: apps/web
+        run: npm install
+      - working-directory: apps/web
+        run: npm audit --audit-level=moderate --production || true
 
   filesystem-scan:
     runs-on: ubuntu-latest

@@ -18,8 +18,8 @@ skips = [
     'B602',  # subprocess_popen_with_shell_equals_true - Acceptable in controlled contexts
 ]
 
-# Set severity threshold
-severity = 'medium'
+# Set severity threshold - fail only on HIGH severity for release-grade security
+severity = 'high'
 confidence = 'medium'
 
 # Maximum line length
