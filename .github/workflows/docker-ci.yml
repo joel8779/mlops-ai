@@ -25,6 +25,19 @@ jobs:
 
       - name: Validate compose files
         run: |
+          # Create minimal .env for CI validation
+          cat > .env << 'EOF'
+          ENVIRONMENT=test
+          DEBUG=true
+          LOG_JSON=false
+          DATABASE_URL=postgresql+asyncpg://resume:resume@localhost:5432/resume_ai
+          SYNC_DATABASE_URL=postgresql+psycopg://resume:resume@localhost:5432/resume_ai
+          REDIS_URL=redis://localhost:6379/0
+          CELERY_BROKER_URL=redis://localhost:6379/1
+          CELERY_RESULT_BACKEND=redis://localhost:6379/2
+          QDRANT_URL=http://localhost:6333
+          S3_ENDPOINT_URL=http://localhost:9000
+          EOF
           docker compose -f docker-compose.yml config --quiet
 
       - name: Build API image
