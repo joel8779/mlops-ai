@@ -6,6 +6,7 @@ import redis.asyncio as redis
 from fastapi import WebSocket
 
 from app.core.config import settings
+from app.observability.metrics import WEBSOCKET_ACTIVE_CONNECTIONS
 
 
 class WebSocketManager:
@@ -14,10 +15,14 @@ class WebSocketManager:
 
     async def connect(self, organization_id: UUID, websocket: WebSocket) -> None:
         await websocket.accept()
-        self.connections[str(organization_id)].add(websocket)
+        org_key = str(organization_id)
+        self.connections[org_key].add(websocket)
+        WEBSOCKET_ACTIVE_CONNECTIONS.labels(org_key).set(len(self.connections[org_key]))
 
     def disconnect(self, organization_id: UUID, websocket: WebSocket) -> None:
-        self.connections[str(organization_id)].discard(websocket)
+        org_key = str(organization_id)
+        self.connections[org_key].discard(websocket)
+        WEBSOCKET_ACTIVE_CONNECTIONS.labels(org_key).set(len(self.connections[org_key]))
 
     async def broadcast(self, organization_id: UUID, payload: dict) -> None:
         stale: list[WebSocket] = []

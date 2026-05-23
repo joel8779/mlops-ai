@@ -1,0 +1,50 @@
+groups:
+  - name: production-ai-ops
+    rules:
+      - alert: HighAPILatency
+        expr: histogram_quantile(0.95, sum(rate(resume_ai_api_latency_seconds_bucket[5m])) by (le, path)) > 1.0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: API p95 latency above 1 second
+
+      - alert: GeminiFailureSpike
+        expr: sum(increase(llm_failures_total[10m])) > 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Gemini or LLM failure spike detected
+
+      - alert: VectorRetrievalSlowdown
+        expr: histogram_quantile(0.95, sum(rate(retrieval_topk_latency_ms_bucket[5m])) by (le, strategy)) > 1500
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Vector or hybrid retrieval is slower than SLO
+
+      - alert: QueueBacklog
+        expr: redis_stream_consumer_lag > 1000
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: Redis stream backlog exceeds threshold
+
+      - alert: HallucinationSpike
+        expr: sum(increase(ai_safety_events_total{event_type="hallucination"}[15m])) > 3
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Hallucination detector events are elevated
+
+      - alert: RankingDriftExceeded
+        expr: ranking_model_drift_score > 0.15
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Ranking model drift threshold exceeded

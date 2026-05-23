@@ -2,7 +2,7 @@ from pathlib import Path
 
 import joblib
 
-from app.core.logging import get_logger
+from app.logging import get_logger
 
 logger = get_logger(__name__)
 

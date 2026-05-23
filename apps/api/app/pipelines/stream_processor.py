@@ -9,6 +9,15 @@ from typing import Any, AsyncGenerator, Callable, Optional
 from uuid import UUID
 
 from app.core.redis import get_redis_client
+from app.observability.metrics import (
+    REDIS_STREAM_CONSUMER_LAG,
+    REDIS_STREAM_EVENTS_CONSUMED_TOTAL,
+    REDIS_STREAM_EVENTS_PUBLISHED_TOTAL,
+)
+from app.observability.tracing import get_tracer
+
+
+tracer = get_tracer(__name__)
 
 
 class StreamEventType(str, Enum):
@@ -108,6 +117,10 @@ class StreamProcessor:
                 "user_id": str(event.user_id) if event.user_id else "",
             }
             result = await redis.xadd(self.stream_name, event_data)
+            REDIS_STREAM_EVENTS_PUBLISHED_TOTAL.labels(
+                self.stream_name,
+                event.event_type.value,
+            ).inc()
             return result
         except Exception as e:
             raise RuntimeError(f"Failed to publish event: {e}")
@@ -148,7 +161,7 @@ class StreamProcessor:
                         # Acknowledge processing
                         await redis.xack(self.stream_name, self.consumer_group, event_id)
 
-            except Exception as e:
+            except Exception:
                 # Log error and continue
                 await asyncio.sleep(1)
 
@@ -160,26 +173,40 @@ class StreamProcessor:
             event_data: Event data dictionary
         """
         try:
-            event_type = StreamEventType(event_data[b"event_type"].decode())
-            data = json.loads(event_data[b"data"].decode())
+            with tracer.start_as_current_span("redis_stream.process_event") as span:
+                event_type = StreamEventType(self._decode(event_data, "event_type"))
+                data = json.loads(self._decode(event_data, "data"))
+                span.set_attribute("redis.stream", self.stream_name)
+                span.set_attribute("redis.event_id", event_id)
+                span.set_attribute("event.type", event_type.value)
 
-            event = StreamEvent(
-                event_id=UUID(event_data[b"event_id"].decode()),
-                event_type=event_type,
-                data=data,
-                timestamp=datetime.fromisoformat(event_data[b"timestamp"].decode()),
-                organization_id=UUID(event_data[b"organization_id"].decode()),
-                user_id=UUID(event_data[b"user_id"].decode()) if event_data.get(b"user_id") else None,
-            )
+                event = StreamEvent(
+                    event_id=UUID(self._decode(event_data, "event_id")),
+                    event_type=event_type,
+                    data=data,
+                    timestamp=datetime.fromisoformat(self._decode(event_data, "timestamp")),
+                    organization_id=UUID(self._decode(event_data, "organization_id")),
+                    user_id=UUID(self._decode(event_data, "user_id")) if self._decode(event_data, "user_id") else None,
+                )
 
-            # Call registered handler
-            handler = self.handlers.get(event_type)
-            if handler:
-                await handler(event)
+                handler = self.handlers.get(event_type)
+                if handler:
+                    await handler(event)
+                REDIS_STREAM_EVENTS_CONSUMED_TOTAL.labels(
+                    self.stream_name,
+                    self.consumer_group,
+                    event_type.value,
+                    "success",
+                ).inc()
 
-        except Exception as e:
-            # Log error
-            pass
+        except Exception as exc:
+            REDIS_STREAM_EVENTS_CONSUMED_TOTAL.labels(
+                self.stream_name,
+                self.consumer_group,
+                "unknown",
+                "error",
+            ).inc()
+            raise exc
 
     async def stop(self) -> None:
         """Stop processing events."""
@@ -195,8 +222,18 @@ class StreamProcessor:
             redis = get_redis_client()
             info = await redis.xinfo_groups(self.stream_name)
             for group_info in info:
-                if group_info[b"name"] == self.consumer_group.encode():
-                    return int(group_info[b"pending"])
+                name = self._decode(group_info, "name")
+                if name == self.consumer_group:
+                    pending = int(group_info.get("pending") or group_info.get(b"pending") or 0)
+                    REDIS_STREAM_CONSUMER_LAG.labels(self.stream_name, self.consumer_group).set(pending)
+                    return pending
         except Exception:
             pass
         return 0
+
+    @staticmethod
+    def _decode(payload: dict, key: str) -> str:
+        value = payload.get(key) or payload.get(key.encode())
+        if isinstance(value, bytes):
+            return value.decode()
+        return str(value or "")

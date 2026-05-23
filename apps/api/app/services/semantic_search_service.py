@@ -1,10 +1,22 @@
+from dataclasses import dataclass
+from typing import Any
 from uuid import UUID
 
 from app.schemas.matching import SemanticSearchRequest, SemanticSearchResult
 from app.services.embedding_service import EmbeddingService
 
 
+@dataclass(frozen=True)
+class CandidateSearchHit:
+    id: UUID
+    score: float
+    metadata: dict[str, Any]
+
+
 class SemanticSearchService:
+    def __init__(self, db: Any | None = None) -> None:
+        self.db = db
+
     def search(self, organization_id: UUID, payload: SemanticSearchRequest) -> list[SemanticSearchResult]:
         hits = EmbeddingService().candidate_search(
             organization_id=organization_id,
@@ -28,6 +40,24 @@ class SemanticSearchService:
                 )
             )
         return self._rerank(payload.query, results)
+
+    async def search_candidates(
+        self,
+        organization_id: UUID,
+        query: str,
+        job_description_id: UUID | None = None,
+        limit: int = 10,
+    ) -> list[CandidateSearchHit]:
+        del job_description_id
+        payload = SemanticSearchRequest(query=query, limit=limit)
+        return [
+            CandidateSearchHit(
+                id=result.candidate_id,
+                score=result.score / 100,
+                metadata={**result.payload, "snippet": result.snippet},
+            )
+            for result in self.search(organization_id, payload)
+        ]
 
     @staticmethod
     def _rerank(query: str, results: list[SemanticSearchResult]) -> list[SemanticSearchResult]:

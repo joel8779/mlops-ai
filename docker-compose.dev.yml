@@ -1,0 +1,272 @@
+name: resume-intelligence-dev
+
+x-api-env: &api-env
+  env_file:
+    - .env
+  environment:
+    DATABASE_URL: postgresql+asyncpg://resume:resume@postgres:5432/resume_ai
+    SYNC_DATABASE_URL: postgresql+psycopg://resume:resume@postgres:5432/resume_ai
+    REDIS_URL: redis://redis:6379/0
+    CELERY_BROKER_URL: redis://redis:6379/1
+    CELERY_RESULT_BACKEND: redis://redis:6379/2
+    QDRANT_URL: http://qdrant:6333
+    S3_ENDPOINT_URL: http://minio:9000
+    MLFLOW_TRACKING_URI: http://mlflow:5000
+    NEO4J_URI: bolt://neo4j:7687
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    LOKI_URL: http://loki:3100
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: resume-dev-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: resume
+      POSTGRES_PASSWORD: resume
+      POSTGRES_DB: resume_ai
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resume -d resume_ai"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    logging: *default-logging
+    networks: [resume_net]
+
+  redis:
+    image: redis:7-alpine
+    container_name: resume-dev-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *default-logging
+    networks: [resume_net]
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.6
+    container_name: resume-dev-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz | grep -q healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *default-logging
+    networks: [resume_net]
+
+  neo4j:
+    image: neo4j:5.26-community
+    container_name: resume-dev-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/resume-graph-password
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: 1G
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+    logging: *default-logging
+    networks: [resume_net]
+
+  minio:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    container_name: resume-dev-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *default-logging
+    networks: [resume_net]
+
+  minio-init:
+    image: minio/mc:RELEASE.2024-12-18T13-24-41Z
+    container_name: resume-dev-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/resumes"
+    logging: *default-logging
+    networks: [resume_net]
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.19.0
+    container_name: resume-dev-mlflow
+    restart: unless-stopped
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:////mlflow/mlflow.db --default-artifact-root /mlruns
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_db:/mlflow
+      - mlflow_artifacts:/mlruns
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    logging: *default-logging
+    networks: [resume_net]
+
+  api:
+    build:
+      context: ./apps/api
+    container_name: resume-dev-api
+    restart: unless-stopped
+    command: uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --reload
+    <<: *api-env
+    volumes:
+      - ./apps/api/app:/app/app
+      - ./apps/api/alembic:/app/alembic
+      - ./apps/api/alembic.ini:/app/alembic.ini
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    logging: *default-logging
+    networks: [resume_net]
+
+  worker:
+    build:
+      context: ./apps/api
+    container_name: resume-dev-worker
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO --concurrency=2
+    <<: *api-env
+    volumes:
+      - ./apps/api/app:/app/app
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    logging: *default-logging
+    networks: [resume_net]
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: resume-dev-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      api:
+        condition: service_healthy
+    logging: *default-logging
+    networks: [resume_net]
+
+  loki:
+    image: grafana/loki:3.3.2
+    container_name: resume-dev-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki_data:/loki
+    logging: *default-logging
+    networks: [resume_net]
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: resume-dev-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/phase6-dashboards:ro
+      - ./infra/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+      - loki
+    logging: *default-logging
+    networks: [resume_net]
+
+networks:
+  resume_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:
+  neo4j_data:
+  neo4j_logs:
+  minio_data:
+  mlflow_db:
+  mlflow_artifacts:
+  prometheus_data:
+  loki_data:
+  grafana_data:

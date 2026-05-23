@@ -13,11 +13,12 @@ from starlette.responses import JSONResponse
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.exceptions import install_exception_handlers
-from app.core.logging import configure_logging, get_logger
+from app.logging import configure_logging, get_logger
 from app.db.database import check_database, close_database
 from app.middleware.request_context import RequestContextMiddleware
 from app.middleware.security import SecurityHeadersMiddleware
 from app.middleware.tenant import TenantContextMiddleware
+from app.observability.tracing import configure_tracing
 from app.schemas.health import HealthResponse
 
 configure_logging()
@@ -57,6 +58,7 @@ def create_app() -> FastAPI:
     )
 
     install_exception_handlers(app)
+    configure_tracing(app)
 
     @app.exception_handler(RateLimitExceeded)
     async def rate_limit_handler(request, exc: RateLimitExceeded) -> JSONResponse:

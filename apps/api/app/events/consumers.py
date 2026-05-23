@@ -1,4 +1,4 @@
-from app.core.logging import get_logger
+from app.logging import get_logger
 from app.events.event_bus import RedisStreamEventBus
 
 logger = get_logger(__name__)

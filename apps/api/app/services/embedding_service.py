@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from time import perf_counter
 from uuid import UUID, uuid4
 
 from qdrant_client import QdrantClient
@@ -6,6 +7,17 @@ from qdrant_client.http.models import Distance, FieldCondition, Filter, MatchAny
 from sentence_transformers import SentenceTransformer
 
 from app.core.config import settings
+from app.observability.metrics import (
+    EMBEDDING_GENERATION_DURATION_MS,
+    EMBEDDING_LATENCY,
+    ML_INFERENCE_FAILURES_TOTAL,
+    ML_INFERENCE_LATENCY_MS,
+    elapsed_ms,
+)
+from app.observability.tracing import get_tracer
+
+
+tracer = get_tracer(__name__)
 
 
 @dataclass(frozen=True)
@@ -43,8 +55,35 @@ class EmbeddingService:
     def embed(self, chunks: list[TextChunk]) -> list[list[float]]:
         if not chunks:
             return []
-        vectors = self.model.encode([chunk.text for chunk in chunks], normalize_embeddings=True)
-        return [vector.tolist() for vector in vectors]
+        start_time = perf_counter()
+        try:
+            with tracer.start_as_current_span("embedding.generate") as span:
+                span.set_attribute("embedding.model", settings.embedding_model_name)
+                span.set_attribute("embedding.chunk_count", len(chunks))
+                vectors = self.model.encode([chunk.text for chunk in chunks], normalize_embeddings=True)
+            duration_ms = elapsed_ms(start_time)
+            EMBEDDING_LATENCY.labels(settings.embedding_model_name).observe(duration_ms / 1000)
+            EMBEDDING_GENERATION_DURATION_MS.labels(settings.embedding_model_name, "success").observe(duration_ms)
+            ML_INFERENCE_LATENCY_MS.labels(
+                settings.embedding_model_name,
+                "embedding_generation",
+                "success",
+            ).observe(duration_ms)
+            return [vector.tolist() for vector in vectors]
+        except Exception as exc:
+            duration_ms = elapsed_ms(start_time)
+            EMBEDDING_GENERATION_DURATION_MS.labels(settings.embedding_model_name, "error").observe(duration_ms)
+            ML_INFERENCE_LATENCY_MS.labels(
+                settings.embedding_model_name,
+                "embedding_generation",
+                "error",
+            ).observe(duration_ms)
+            ML_INFERENCE_FAILURES_TOTAL.labels(
+                settings.embedding_model_name,
+                "embedding_generation",
+                type(exc).__name__,
+            ).inc()
+            raise
 
     def upsert_candidate_resume(
         self,
@@ -104,7 +143,11 @@ class EmbeddingService:
         return point_ids
 
     def semantic_search(self, organization_id: UUID, query: str, limit: int = 10) -> list[dict]:
+        start_time = perf_counter()
         vector = self.model.encode(query, normalize_embeddings=True).tolist()
+        EMBEDDING_GENERATION_DURATION_MS.labels(settings.embedding_model_name, "success").observe(
+            elapsed_ms(start_time)
+        )
         results = self.client.search(
             collection_name=settings.qdrant_collection,
             query_vector=vector,
@@ -122,7 +165,11 @@ class EmbeddingService:
         limit: int,
         skills: list[str] | None = None,
     ) -> list[dict]:
+        start_time = perf_counter()
         vector = self.model.encode(query, normalize_embeddings=True).tolist()
+        EMBEDDING_GENERATION_DURATION_MS.labels(settings.embedding_model_name, "success").observe(
+            elapsed_ms(start_time)
+        )
         conditions = [FieldCondition(key="organization_id", match=MatchValue(value=str(organization_id)))]
         if skills:
             conditions.append(FieldCondition(key="skills", match=MatchAny(any=skills)))

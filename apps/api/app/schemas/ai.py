@@ -21,9 +21,16 @@ class CandidateComparisonRequest(BaseModel):
 class CopilotRequest(BaseModel):
     query: str = Field(min_length=3)
     top_k: int = Field(default=8, ge=1, le=20)
+    context: dict = Field(default_factory=dict)
 
 
 class AIResponse(BaseModel):
     answer: str
     citations: list[dict] = Field(default_factory=list)
     usage: dict = Field(default_factory=dict)
+
+
+class Copilot2Response(BaseModel):
+    answer: str
+    confidence: float
+    artifacts: dict = Field(default_factory=dict)

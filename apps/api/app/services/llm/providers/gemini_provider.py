@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any, AsyncGenerator, Callable, Optional
 
@@ -22,8 +22,14 @@ from tenacity import (
 )
 
 from app.core.config import settings
+from app.observability.ai import LLMObserver
+from app.observability.tracing import get_tracer
 from app.services.llm.providers.token_tracker import TokenTracker
 from app.services.llm.providers.safety_filters import SafetyFilter, SafetyLevel
+
+
+tracer = get_tracer(__name__)
+llm_observer = LLMObserver()
 
 
 class GeminiModel(str, Enum):
@@ -136,6 +142,7 @@ class GeminiProvider:
         prompt: str,
         system: Optional[str] = None,
         options: Optional[GenerationOptions] = None,
+        feature: str = "llm_completion",
     ) -> LLMResult:
         """Generate a completion.
 
@@ -151,28 +158,31 @@ class GeminiProvider:
         options.system_instruction = system
 
         start_time = asyncio.get_event_loop().time()
+        metric_start = llm_observer.start_timer()
 
-        # Build generation config
-        config = GenerationConfig(
-            temperature=options.temperature,
-            top_p=options.top_p,
-            top_k=options.top_k,
-            max_output_tokens=options.max_output_tokens or self.model.max_tokens,
-        )
+        try:
+            with tracer.start_as_current_span("llm.gemini.complete") as span:
+                span.set_attribute("llm.provider", "gemini")
+                span.set_attribute("llm.model", self.model.value)
+                span.set_attribute("llm.feature", feature)
 
-        # Build safety settings
-        safety_settings = self._build_safety_settings(options.safety_level)
-
-        # Prepare content
-        content = self._prepare_content(prompt, system)
-
-        # Generate
-        response = await asyncio.to_thread(
-            self.client.generate_content,
-            content,
-            generation_config=config,
-            safety_settings=safety_settings,
-        )
+                config = GenerationConfig(
+                    temperature=options.temperature,
+                    top_p=options.top_p,
+                    top_k=options.top_k,
+                    max_output_tokens=options.max_output_tokens or self.model.max_tokens,
+                )
+                safety_settings = self._build_safety_settings(options.safety_level)
+                content = self._prepare_content(prompt, system)
+                response = await asyncio.to_thread(
+                    self.client.generate_content,
+                    content,
+                    generation_config=config,
+                    safety_settings=safety_settings,
+                )
+        except Exception as exc:
+            llm_observer.record_failure("gemini", self.model.value, feature, metric_start, exc)
+            raise
 
         # Calculate latency
         latency_ms = (asyncio.get_event_loop().time() - start_time) * 1000
@@ -205,6 +215,18 @@ class GeminiProvider:
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             cost_usd=cost_usd,
+            feature=feature,
+        )
+        llm_observer.record_success(
+            provider="gemini",
+            model=self.model.value,
+            feature=feature,
+            start_time=metric_start,
+            prompt=prompt,
+            response=text,
+            input_tokens=prompt_tokens,
+            output_tokens=completion_tokens,
+            cost_usd=cost_usd,
         )
 
         return LLMResult(
@@ -232,6 +254,7 @@ class GeminiProvider:
         system: Optional[str] = None,
         options: Optional[GenerationOptions] = None,
         on_chunk: Optional[Callable[[str], None]] = None,
+        feature: str = "llm_stream",
     ) -> AsyncGenerator[str, None]:
         """Generate a streaming completion.
 
@@ -247,6 +270,7 @@ class GeminiProvider:
         options = options or GenerationOptions()
         options.stream = True
         options.system_instruction = system
+        metric_start = llm_observer.start_timer()
 
         # Build generation config
         config = GenerationConfig(
@@ -262,14 +286,21 @@ class GeminiProvider:
         # Prepare content
         content = self._prepare_content(prompt, system)
 
-        # Generate stream
-        response = await asyncio.to_thread(
-            self.client.generate_content,
-            content,
-            generation_config=config,
-            safety_settings=safety_settings,
-            stream=True,
-        )
+        try:
+            with tracer.start_as_current_span("llm.gemini.stream") as span:
+                span.set_attribute("llm.provider", "gemini")
+                span.set_attribute("llm.model", self.model.value)
+                span.set_attribute("llm.feature", feature)
+                response = await asyncio.to_thread(
+                    self.client.generate_content,
+                    content,
+                    generation_config=config,
+                    safety_settings=safety_settings,
+                    stream=True,
+                )
+        except Exception as exc:
+            llm_observer.record_failure("gemini", self.model.value, feature, metric_start, exc)
+            raise
 
         full_text = ""
         for chunk in response:
@@ -290,6 +321,18 @@ class GeminiProvider:
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 cost_usd=cost_usd,
+                feature=feature,
+            )
+            llm_observer.record_success(
+                provider="gemini",
+                model=self.model.value,
+                feature=feature,
+                start_time=metric_start,
+                prompt=prompt,
+                response=full_text,
+                input_tokens=prompt_tokens,
+                output_tokens=completion_tokens,
+                cost_usd=cost_usd,
             )
 
     async def complete_structured(
@@ -298,6 +341,7 @@ class GeminiProvider:
         schema: dict[str, Any],
         system: Optional[str] = None,
         options: Optional[GenerationOptions] = None,
+        feature: str = "llm_structured",
     ) -> LLMResult:
         """Generate a completion with structured JSON output.
 
@@ -317,19 +361,19 @@ class GeminiProvider:
         schema_instruction = f"\n\nYou must respond with valid JSON that conforms to this schema:\n{json.dumps(schema, indent=2)}"
         enhanced_system = f"{system or ''}{schema_instruction}"
 
-        result = await self.complete(prompt, enhanced_system, options)
+        result = await self.complete(prompt, enhanced_system, options, feature=feature)
 
         # Parse and validate JSON
         if result.text:
             try:
-                result.structured_data = json.loads(result.text)
-            except json.JSONDecodeError as e:
+                result = replace(result, structured_data=json.loads(result.text))
+            except json.JSONDecodeError:
                 # Try to extract JSON from markdown code blocks
                 import re
                 json_match = re.search(r'```json\s*(.*?)\s*```', result.text, re.DOTALL)
                 if json_match:
                     try:
-                        result.structured_data = json.loads(json_match.group(1))
+                        result = replace(result, structured_data=json.loads(json_match.group(1)))
                     except json.JSONDecodeError:
                         pass
 

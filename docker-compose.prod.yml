@@ -1,0 +1,105 @@
+name: resume-intelligence-prod
+
+x-api-env: &api-env
+  env_file:
+    - .env
+  environment:
+    ENVIRONMENT: production
+    DEBUG: "false"
+    LOG_JSON: "true"
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+services:
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    image: resume-intelligence-api:prod
+    restart: unless-stopped
+    command: uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --workers 4
+    <<: *api-env
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    logging: *default-logging
+    networks: [resume_net]
+
+  worker:
+    image: resume-intelligence-api:prod
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=INFO --concurrency=4
+    <<: *api-env
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d celery@$$(hostname) || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    logging: *default-logging
+    networks: [resume_net]
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=30d
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    logging: *default-logging
+    networks: [resume_net]
+
+  loki:
+    image: grafana/loki:3.3.2
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki_data:/loki
+    logging: *default-logging
+    networks: [resume_net]
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me}
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/phase6-dashboards:ro
+      - ./infra/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+      - loki
+    logging: *default-logging
+    networks: [resume_net]
+
+networks:
+  resume_net:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  loki_data:
+  grafana_data:

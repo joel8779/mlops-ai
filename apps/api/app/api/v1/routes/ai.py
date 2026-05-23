@@ -7,10 +7,12 @@ from app.schemas.ai import (
     AIResponse,
     AISummaryRequest,
     CandidateComparisonRequest,
+    Copilot2Response,
     CopilotRequest,
     InterviewQuestionRequest,
 )
 from app.schemas.auth import AuthContext
+from app.agents.orchestrator.copilot_orchestrator import HiringCopilotOrchestrator
 from app.services.llm_recruiter_service import LLMRecruiterService
 from app.services.rag_pipeline import RAGPipeline
 
@@ -35,3 +37,14 @@ async def compare_candidates(payload: CandidateComparisonRequest, auth: AuthCont
 @router.post("/copilot", response_model=AIResponse)
 async def copilot(payload: CopilotRequest, auth: AuthContext = Depends(get_current_auth), db: AsyncSession = Depends(get_db)):
     return await RAGPipeline(db).answer(auth, payload)
+
+
+@router.post("/copilot-2", response_model=Copilot2Response)
+async def copilot_2(payload: CopilotRequest, auth: AuthContext = Depends(get_current_auth), db: AsyncSession = Depends(get_db)):
+    result = await HiringCopilotOrchestrator(db).run(
+        organization_id=auth.organization_id,
+        recruiter_id=auth.user_id,
+        query=payload.query,
+        context={**payload.context, "limit": payload.top_k},
+    )
+    return Copilot2Response(answer=result.answer, confidence=result.confidence, artifacts=result.artifacts)

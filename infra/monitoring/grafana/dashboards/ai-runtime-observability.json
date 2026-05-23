@@ -1,0 +1,78 @@
+{
+  "title": "AI Resume Intelligence - Runtime Observability",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "timezone": "browser",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "LLM Request Latency p95",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(llm_request_latency_ms_bucket[5m])) by (le, model, feature))",
+          "legendFormat": "{{model}} / {{feature}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM Tokens",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "targets": [
+        {"expr": "sum(rate(llm_tokens_input_total[5m])) by (model)", "legendFormat": "input {{model}}"},
+        {"expr": "sum(rate(llm_tokens_output_total[5m])) by (model)", "legendFormat": "output {{model}}"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Retrieval Top-K Latency p95",
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(retrieval_topk_latency_ms_bucket[5m])) by (le, strategy))",
+          "legendFormat": "{{strategy}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Recommendation Generation Latency p95",
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(recommendation_generation_time_ms_bucket[5m])) by (le, strategy))",
+          "legendFormat": "{{strategy}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Agent Failures",
+      "gridPos": {"x": 0, "y": 16, "w": 8, "h": 7},
+      "targets": [
+        {
+          "expr": "sum(increase(agent_execution_failures_total[5m])) by (workflow_step, error_type)",
+          "legendFormat": "{{workflow_step}} / {{error_type}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis Stream Consumer Lag",
+      "gridPos": {"x": 8, "y": 16, "w": 8, "h": 7},
+      "targets": [
+        {"expr": "redis_stream_consumer_lag", "legendFormat": "{{stream}} / {{consumer_group}}"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "WebSocket Active Connections",
+      "gridPos": {"x": 16, "y": 16, "w": 8, "h": 7},
+      "targets": [
+        {"expr": "sum(websocket_active_connections) by (organization_id)", "legendFormat": "{{organization_id}}"}
+      ]
+    }
+  ]
+}

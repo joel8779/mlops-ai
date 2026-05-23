@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from enum import Enum
+from time import perf_counter
 from typing import Any, Optional
 from uuid import UUID
 
@@ -10,6 +11,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.retrieval.bm25_indexer import BM25Indexer
 from app.services.retrieval.reranker import MetadataReranker
 from app.services.semantic_search_service import SemanticSearchService
+from app.observability.metrics import (
+    RETRIEVAL_LATENCY,
+    RETRIEVAL_RESULT_COUNT,
+    RETRIEVAL_TOPK_LATENCY_MS,
+    elapsed_ms,
+)
+from app.observability.tracing import get_tracer
+
+
+tracer = get_tracer(__name__)
 
 
 class FusionMethod(str, Enum):
@@ -78,37 +89,48 @@ class HybridRetriever:
             List of RetrievalResult objects
         """
         filters = filters or {}
+        strategy = self.fusion_method.value
+        start_time = perf_counter()
 
-        # Perform vector search
-        vector_results = await self.semantic_search.search_candidates(
-            organization_id=organization_id,
-            query=query,
-            job_description_id=job_description_id,
-            limit=limit * 2,  # Get more for fusion
-        )
+        try:
+            with tracer.start_as_current_span("retrieval.hybrid_search") as span:
+                span.set_attribute("retrieval.strategy", strategy)
+                span.set_attribute("retrieval.limit", limit)
+                span.set_attribute("organization.id", str(organization_id))
 
-        # Perform keyword search
-        keyword_results = await self.bm25_indexer.search(
-            query=query,
-            organization_id=organization_id,
-            job_description_id=job_description_id,
-            limit=limit * 2,
-        )
+                vector_results = await self.semantic_search.search_candidates(
+                    organization_id=organization_id,
+                    query=query,
+                    job_description_id=job_description_id,
+                    limit=limit * 2,
+                )
+                keyword_results = await self.bm25_indexer.search(
+                    query=query,
+                    organization_id=organization_id,
+                    job_description_id=job_description_id,
+                    limit=limit * 2,
+                )
+                fused_results = self._fuse_results(
+                    vector_results,
+                    keyword_results,
+                    limit=limit * 2,
+                )
+                reranked = await self.reranker.rerank(
+                    results=fused_results,
+                    filters=filters,
+                    limit=limit,
+                )
+                span.set_attribute("retrieval.result_count", len(reranked))
+        except Exception:
+            duration_ms = elapsed_ms(start_time)
+            RETRIEVAL_TOPK_LATENCY_MS.labels(strategy, "error").observe(duration_ms)
+            RETRIEVAL_LATENCY.labels(strategy).observe(duration_ms / 1000)
+            raise
 
-        # Fuse results
-        fused_results = self._fuse_results(
-            vector_results,
-            keyword_results,
-            limit=limit * 2,
-        )
-
-        # Apply metadata reranking
-        reranked = await self.reranker.rerank(
-            results=fused_results,
-            filters=filters,
-            limit=limit,
-        )
-
+        duration_ms = elapsed_ms(start_time)
+        RETRIEVAL_TOPK_LATENCY_MS.labels(strategy, "success").observe(duration_ms)
+        RETRIEVAL_LATENCY.labels(strategy).observe(duration_ms / 1000)
+        RETRIEVAL_RESULT_COUNT.labels(strategy).observe(len(reranked))
         return reranked
 
     def _fuse_results(

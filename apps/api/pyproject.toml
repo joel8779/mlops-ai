@@ -2,7 +2,7 @@
 name = "resume-intelligence-api"
 version = "0.1.0"
 description = "FastAPI backend for the AI Resume Intelligence Platform"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 dynamic = ["dependencies", "optional-dependencies"]
 
 [tool.setuptools.dynamic]
@@ -13,6 +13,23 @@ optional-dependencies.dev = {file = ["requirements-dev.txt"]}
 line-length = 100
 target-version = "py311"
 
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 45
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["app/tests"]
+markers = [
+    "smoke: fast application import and route smoke tests",
+    "integration: tests requiring local infrastructure services",
+]

@@ -1,0 +1,32 @@
+{
+  "title": "Realtime + Queues",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "WebSocket Active Connections",
+      "gridPos": {"x": 0, "y": 0, "w": 8, "h": 8},
+      "targets": [
+        {"expr": "sum(websocket_active_connections) by (organization_id)", "legendFormat": "{{organization_id}}"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis Stream Lag",
+      "gridPos": {"x": 8, "y": 0, "w": 8, "h": 8},
+      "targets": [
+        {"expr": "redis_stream_consumer_lag", "legendFormat": "{{stream}} / {{consumer_group}}"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Stream Processing Latency p95",
+      "gridPos": {"x": 16, "y": 0, "w": 8, "h": 8},
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum(rate(redis_stream_processing_latency_ms_bucket[5m])) by (le, stream, event_type))", "legendFormat": "{{stream}} / {{event_type}}"}
+      ]
+    }
+  ]
+}
