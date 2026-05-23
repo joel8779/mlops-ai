@@ -29,6 +29,13 @@ env:
   LLM_PROVIDER: disabled
   GEMINI_API_KEY: test-gemini-key
   JWT_SECRET_KEY: ci-test-secret-key-change-me
+  DATABASE_URL: postgresql+asyncpg://resume:resume@localhost:5432/resume_ai
+  SYNC_DATABASE_URL: postgresql+psycopg://resume:resume@localhost:5432/resume_ai
+  REDIS_URL: redis://localhost:6379/0
+  CELERY_BROKER_URL: redis://localhost:6379/1
+  CELERY_RESULT_BACKEND: redis://localhost:6379/2
+  QDRANT_URL: http://localhost:6333
+  S3_ENDPOINT_URL: http://localhost:9000
 
 jobs:
   validate:

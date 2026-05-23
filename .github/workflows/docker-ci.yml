@@ -31,7 +31,7 @@ jobs:
         run: docker build apps/api -t resume-intelligence-api:${{ github.sha }}
 
       - name: Smoke test image
-        run: docker run --rm resume-intelligence-api:${{ github.sha }} python -m compileall app
+        run: docker run --rm resume-intelligence-api:${{ github.sha }} python -m compileall /app/app
 
       - name: Trivy image scan
         run: |
