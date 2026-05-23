@@ -1,0 +1,46 @@
+# pip-audit Policy Configuration
+# Production-grade security policy for Python dependency auditing
+
+# Vulnerability severity threshold
+# Options: low, moderate, high, critical
+severity: critical
+
+# Fail on vulnerabilities
+# Set to true to fail the audit if vulnerabilities are found
+fail-on-vuln: true
+
+# Ignore vulnerabilities (ONLY if justified)
+# Format: package_name:version_range:reason
+# Example: "package==1.0.0:False positive:Justification"
+ignore:
+  # Add justified suppressions here
+  # Example:
+  # - "package==1.0.0:False positive:Vulnerability is not exploitable in our context"
+
+# Skip dependencies
+# Skip certain dependencies from audit
+# Example: development-only packages
+skip:
+  # Add packages to skip here
+  # Example:
+  # - pytest
+  # - mypy
+
+# Audit format
+# Options: json, columns
+format: json
+
+# Output file
+# Path to write audit results
+output: pip-audit.json
+
+# Report format
+# Options: full, summary
+report: summary
+
+# Vulnerability database
+# Options: pypi, osv, pyup
+vulnerability-database: pypi
+
+# Timeout for network requests (seconds)
+timeout: 30

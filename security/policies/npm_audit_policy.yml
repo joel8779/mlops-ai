@@ -1,0 +1,49 @@
+# npm audit Policy Configuration
+# Production-grade security policy for Node.js dependency auditing
+
+# Audit level
+# Options: low, moderate, high, critical
+audit-level: critical
+
+# Production only
+# Only audit production dependencies
+production: true
+
+# Run audit in development mode
+# Set to false for production-grade security
+dev: false
+
+# Audit fix type
+# Options: dependencies, devDependencies, peerDependencies
+fix-type: dependencies
+
+# Force audit
+# Force audit even if package-lock.json is not up to date
+force: false
+
+# JSON output
+# Output results in JSON format
+json: true
+
+# Output file
+# Path to write audit results
+output-file: npm-audit.json
+
+# Timeout (milliseconds)
+timeout: 60000
+
+# Ignore vulnerabilities (ONLY if justified)
+# Format: package-name@version:reason
+# Example: "package@1.0.0:False positive:Vulnerability is not exploitable in our context"
+ignore:
+  # Add justified suppressions here
+  # Example:
+  # - "package@1.0.0:False positive:Vulnerability is not exploitable in our context"
+
+# Allowlist
+# Allow specific advisories (ONLY if justified)
+# Format: advisory-id:reason
+allowlist:
+  # Add justified allowlist entries here
+  # Example:
+  # - "1234567:False positive:Advisory is not applicable to our usage"

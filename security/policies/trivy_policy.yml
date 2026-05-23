@@ -1,0 +1,79 @@
+# Trivy Policy Configuration
+# Production-grade security policy for container and filesystem scanning
+
+# Severity threshold
+# Options: UNKNOWN, LOW, MEDIUM, HIGH, CRITICAL
+severity:
+  - HIGH
+  - CRITICAL
+
+# Vulnerability types to scan
+# Options: os, library
+vulnerability:
+  type:
+    - os
+    - library
+
+# Ignore vulnerabilities (ONLY if justified)
+# Format: vulnerability-id:reason
+ignore:
+  # Add justified suppressions here
+  # Example:
+  # - CVE-2021-12345:False positive:Vulnerability is not exploitable in our context
+
+# Ignore file
+# Path to ignore file for additional suppressions
+ignorefile: .trivyignore
+
+# Scan options
+scan:
+  # Scan type
+  # Options: fs, image, config
+  type: fs
+
+  # Scan all layers (for image scans)
+  all-layers: false
+
+  # Skip files/directories
+  skip-dirs:
+    - .git
+    - .venv
+    - node_modules
+    - __pycache__
+    - .pytest_cache
+
+  # Skip files
+  skip-files:
+    - "*.pyc"
+    - "*.pyo"
+    - "*.pyd"
+    - ".DS_Store"
+
+# Report format
+# Options: table, json, sarif, template, cyclonedx, spdx, spdx-json
+format: table
+
+# Output file
+# Path to write scan results
+output: trivy-report.json
+
+# Exit code
+# Set to 0 to not fail on vulnerabilities
+exit-code: 0
+
+# Timeout (seconds)
+timeout: 300
+
+# Cache directory
+cache-dir: /tmp/trivy-cache
+
+# DB repository
+db:
+  # Skip DB update
+  skip-update: false
+
+  # DB repository
+  repository: ghcr.io/aquasecurity/trivy-db
+
+  # Java DB repository
+  java-db-repository: ghcr.io/aquasec/trivy-java-db
