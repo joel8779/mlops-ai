@@ -1,0 +1,24 @@
+# Observability and Metrics - PHASE 21
+# Layer 3: Observability stack
+# Install after core dependencies
+
+# Structured logging
+structlog==24.4.0
+
+# Metrics and monitoring
+prometheus-client==0.21.1
+prometheus-fastapi-instrumentator==7.0.0
+
+# OpenTelemetry - API and SDK
+opentelemetry-api==1.29.0
+opentelemetry-sdk==1.29.0
+
+# OpenTelemetry - Exporters
+opentelemetry-exporter-otlp==1.29.0
+
+# OpenTelemetry - Instrumentations
+opentelemetry-instrumentation-fastapi==0.50b0
+opentelemetry-instrumentation-sqlalchemy==0.50b0
+opentelemetry-instrumentation-redis==0.50b0
+opentelemetry-instrumentation-httpx==0.50b0
+opentelemetry-instrumentation-celery==0.50b0

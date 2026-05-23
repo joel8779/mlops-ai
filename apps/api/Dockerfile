@@ -12,9 +12,23 @@ RUN apt-get update \
        libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt requirements.txt
+# Copy layered requirements
+COPY requirements-core.txt requirements-observability.txt requirements-ai.txt requirements-ml.txt ./
+COPY constraints.txt ./
+
+# Install GRPC ecosystem first (for binary compatibility)
 RUN python -m pip install --upgrade pip setuptools wheel \
-    && python -m pip wheel --wheel-dir /wheels -r requirements.txt
+    && python -m pip install --no-cache-dir \
+       grpcio==1.60.0 \
+       grpcio-tools==1.60.0 \
+       grpcio-status==1.60.0 \
+       protobuf==4.25.1
+
+# Build wheels for all layers
+RUN python -m pip wheel --wheel-dir /wheels -r requirements-core.txt \
+    && python -m pip wheel --wheel-dir /wheels -r requirements-observability.txt \
+    && python -m pip wheel --wheel-dir /wheels -r requirements-ai.txt \
+    && python -m pip wheel --wheel-dir /wheels -r requirements-ml.txt
 
 
 FROM python:3.11-slim AS runtime
@@ -36,8 +50,12 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /wheels /wheels
-COPY requirements.txt requirements.txt
-RUN python -m pip install --no-index --find-links=/wheels -r requirements.txt \
+COPY requirements-core.txt requirements-observability.txt requirements-ai.txt requirements-ml.txt ./
+COPY constraints.txt ./
+RUN python -m pip install --no-index --find-links=/wheels -r requirements-core.txt \
+    && python -m pip install --no-index --find-links=/wheels -r requirements-observability.txt \
+    && python -m pip install --no-index --find-links=/wheels -r requirements-ai.txt \
+    && python -m pip install --no-index --find-links=/wheels -r requirements-ml.txt \
     && rm -rf /wheels
 
 COPY app app

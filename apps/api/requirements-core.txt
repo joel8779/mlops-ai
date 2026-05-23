@@ -1,0 +1,49 @@
+# Core Runtime Dependencies - PHASE 21
+# Layer 1: Core runtime, DB stack, GRPC ecosystem
+# Install first before observability, AI, and ML layers
+
+# Web API and ASGI server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+websockets==13.1
+
+# Settings and validation
+pydantic==2.10.4
+pydantic-settings==2.7.1
+email-validator==2.2.0
+
+# PostgreSQL, migrations, and async ORM
+SQLAlchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+psycopg[binary]==3.2.3
+alembic==1.14.0
+
+# Redis, task queue, and rate limiting
+redis==5.2.1
+celery[redis]==5.4.0
+slowapi==0.1.9
+
+# Authentication and security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.1
+cryptography==44.0.0
+
+# Object storage, billing, and integrations
+boto3==1.35.90
+botocore==1.35.90
+httpx==0.28.1
+tenacity==9.0.0
+stripe==11.4.1
+neo4j==5.27.0
+
+# GRPC ecosystem - pinned for Windows compatibility
+# Install this layer first to ensure binary compatibility
+grpcio==1.60.0
+grpcio-tools==1.60.0
+grpcio-status==1.60.0
+protobuf==4.25.1
+
+# Vector search (basic)
+qdrant-client==1.12.1

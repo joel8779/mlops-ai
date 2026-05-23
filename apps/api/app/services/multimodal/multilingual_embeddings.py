@@ -2,7 +2,13 @@
 
 from typing import Optional
 
-from sentence_transformers import SentenceTransformer
+# Graceful degradation for sentence-transformers
+try:
+    from sentence_transformers import SentenceTransformer
+    SENTENCE_TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    SENTENCE_TRANSFORMERS_AVAILABLE = False
+    SentenceTransformer = None
 
 
 class MultilingualEmbeddingService:
@@ -17,6 +23,11 @@ class MultilingualEmbeddingService:
         Args:
             model_name: Name of the multilingual model
         """
+        if not SENTENCE_TRANSFORMERS_AVAILABLE:
+            raise RuntimeError(
+                "sentence-transformers is not installed. "
+                "Install with: pip install -r requirements-ml.txt"
+            )
         self.model_name = model_name
         self.model: Optional[SentenceTransformer] = None
         self._load_model()

@@ -19,6 +19,10 @@ AsyncSessionLocal = async_sessionmaker(
     autoflush=False,
 )
 
+# Compatibility aliases for consistent naming across project
+async_engine = engine
+async_session_maker = AsyncSessionLocal
+
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:

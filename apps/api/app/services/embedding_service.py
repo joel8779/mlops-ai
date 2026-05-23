@@ -4,9 +4,9 @@ from uuid import UUID, uuid4
 
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, FieldCondition, Filter, MatchAny, MatchValue, PointStruct, VectorParams
-from sentence_transformers import SentenceTransformer
 
 from app.core.config import settings
+from app.core.ml_capabilities import ml_capabilities
 from app.observability.metrics import (
     EMBEDDING_GENERATION_DURATION_MS,
     EMBEDDING_LATENCY,
@@ -15,6 +15,14 @@ from app.observability.metrics import (
     elapsed_ms,
 )
 from app.observability.tracing import get_tracer
+
+# Graceful degradation for sentence-transformers
+try:
+    from sentence_transformers import SentenceTransformer
+    SENTENCE_TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    SENTENCE_TRANSFORMERS_AVAILABLE = False
+    SentenceTransformer = None
 
 
 tracer = get_tracer(__name__)
@@ -28,6 +36,15 @@ class TextChunk:
 
 class EmbeddingService:
     def __init__(self) -> None:
+        if not SENTENCE_TRANSFORMERS_AVAILABLE:
+            ml_capabilities.warn_if_unavailable(
+                "sentence_transformers",
+                "Embedding Service"
+            )
+            raise RuntimeError(
+                "sentence-transformers is not installed. "
+                "Install with: pip install -r requirements-ml.txt"
+            )
         self.model = SentenceTransformer(settings.embedding_model_name)
         self.client = QdrantClient(url=str(settings.qdrant_url))
         self.ensure_collection()
