@@ -113,7 +113,7 @@ services:
       redis:
         condition: service_healthy
       qdrant:
-        condition: service_started
+        condition: service_healthy
       minio-init:
         condition: service_completed_successfully
     healthcheck:
