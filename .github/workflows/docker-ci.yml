@@ -49,4 +49,4 @@ jobs:
       - name: Trivy image scan
         run: |
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.57.1 image \
-            --severity HIGH,CRITICAL --exit-code 0 resume-intelligence-api:${{ github.sha }} --ignorefile .trivyignore
+            --severity HIGH,CRITICAL --exit-code 0 resume-intelligence-api:${{ github.sha }}
