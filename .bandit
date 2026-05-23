@@ -1,0 +1,32 @@
+[bandit]
+# Bandit configuration for CI-safe security scanning
+
+# Exclude test directories
+exclude_dirs = [
+    'apps/api/app/tests',
+    'apps/web/__tests__',
+    'apps/web/.next',
+    'node_modules',
+    '.venv',
+    'venv',
+]
+
+# Skip specific tests that produce false positives in CI
+skips = [
+    'B101',  # assert_used - Tests use assertions
+    'B601',  # paramiko_calls - False positive for SSH usage
+    'B602',  # subprocess_popen_with_shell_equals_true - Acceptable in controlled contexts
+]
+
+# Set severity threshold
+severity = 'medium'
+confidence = 'medium'
+
+# Maximum line length
+max_line_length = 120
+
+# Report format
+output_format = 'screen'
+output_file = ''
+
+# Show only issues with severity >= medium

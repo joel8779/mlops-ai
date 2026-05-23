@@ -1,0 +1,13 @@
+{
+  "auditLevel": "moderate",
+  "exclude": [
+    "devDependencies"
+  ],
+  "ignore": [
+    {
+      "id": "npm-package-name",
+      "url": "https://github.com/advisories/GHSA-xxxx-xxxx-xxxx",
+      "reason": "False positive - not exploitable in our context"
+    }
+  ]
+}

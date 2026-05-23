@@ -1,0 +1,17 @@
+# Trivy ignore file for CI-safe vulnerability scanning
+
+# Ignore vulnerabilities in base images that are not actionable
+# Format: vulnerability-id:reason
+
+# Ignore low-severity vulnerabilities
+# CVE-2021-XXXX: Low severity, not exploitable in our context
+
+# Ignore vulnerabilities in development dependencies
+# These are not used in production runtime
+
+# Ignore vulnerabilities in transitive dependencies
+# That cannot be upgraded without breaking changes
+
+# Example ignores (remove or adjust based on actual findings):
+# CVE-2023-XXXX: False positive, not exploitable
+# GHSA-XXXX-XXXX-XXXX: Dependency not used in production

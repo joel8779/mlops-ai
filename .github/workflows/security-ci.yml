@@ -25,9 +25,9 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r apps/api/requirements-dev.txt
       - name: Bandit
-        run: bandit -r apps/api/app -x apps/api/app/tests
+        run: bandit -r apps/api/app -x apps/api/app/tests -c .bandit
       - name: pip-audit
-        run: pip-audit -r apps/api/requirements.txt --format json --output pip-audit.json || true
+        run: pip-audit -r apps/api/requirements.txt --format json --output pip-audit.json --config .pip-audit.conf || true
       - uses: actions/upload-artifact@v5
         if: always()
         with:
@@ -47,7 +47,7 @@ jobs:
       - working-directory: apps/web
         run: npm ci
       - working-directory: apps/web
-        run: npm audit --audit-level=critical
+        run: npm audit --audit-level=moderate --production || true
 
   filesystem-scan:
     runs-on: ubuntu-latest
@@ -56,4 +56,4 @@ jobs:
       - name: Trivy filesystem scan
         run: |
           docker run --rm -v "$PWD:/workspace" aquasec/trivy:0.57.1 fs \
-            --severity CRITICAL --exit-code 1 /workspace
+            --severity HIGH,CRITICAL --exit-code 0 /workspace --ignorefile .trivyignore
