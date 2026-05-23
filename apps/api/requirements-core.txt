@@ -40,10 +40,10 @@ neo4j==5.27.0
 
 # GRPC ecosystem - pinned for Windows compatibility
 # Install this layer first to ensure binary compatibility
-grpcio==1.60.0
-grpcio-tools==1.60.0
-grpcio-status==1.60.0
-protobuf==4.25.1
+grpcio==1.76.0
+grpcio-tools==1.76.0
+grpcio-status==1.76.0
+protobuf==6.31.1
 
 # Vector search (basic)
 qdrant-client==1.12.1
