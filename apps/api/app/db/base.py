@@ -1,29 +1,28 @@
 from app.models.base import Base
-from app.models.domain import (
+from app.models.domain import (  # noqa: F401
     Candidate,
-    CandidateFeature,
+    CandidateEmbedding,
+    CandidateBookmark,
+    CandidateMatch,
+    CandidatePipelineStage,
     CandidateSkill,
-    HiringPipelineStage,
-    Job,
+    ATSScore,
+    APIKey,
+    AnalyticsSnapshot,
+    AuditLog,
+    JobDescription,
+    JobDescriptionEmbedding,
+    LLMUsageLog,
     Organization,
-    RankingRun,
     RecruiterNote,
+    RecruiterActivity,
+    RecruiterConversation,
+    RecruiterMessage,
+    RankingFeedback,
     Resume,
     ResumeProcessingEvent,
+    TenantQuota,
     User,
 )
 
-__all__ = [
-    "Base",
-    "Candidate",
-    "CandidateFeature",
-    "CandidateSkill",
-    "HiringPipelineStage",
-    "Job",
-    "Organization",
-    "RankingRun",
-    "RecruiterNote",
-    "Resume",
-    "ResumeProcessingEvent",
-    "User",
-]
+__all__ = ["Base"]

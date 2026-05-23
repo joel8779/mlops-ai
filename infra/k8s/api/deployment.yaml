@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resume-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: resume-api
+  template:
+    metadata:
+      labels:
+        app: resume-api
+    spec:
+      containers:
+        - name: api
+          image: resume-intelligence-api:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: resume-api-config
+            - secretRef:
+                name: resume-api-secrets
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: resume-api
+spec:
+  selector:
+    app: resume-api
+  ports:
+    - port: 80
+      targetPort: 8000

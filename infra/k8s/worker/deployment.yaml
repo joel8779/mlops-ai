@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resume-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: resume-worker
+  template:
+    metadata:
+      labels:
+        app: resume-worker
+    spec:
+      containers:
+        - name: worker
+          image: resume-intelligence-api:latest
+          command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "--loglevel=INFO"]
+          envFrom:
+            - configMapRef:
+                name: resume-api-config
+            - secretRef:
+                name: resume-api-secrets

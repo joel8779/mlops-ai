@@ -1,0 +1,72 @@
+# Web API and ASGI server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+
+# Settings and validation
+pydantic==2.10.4
+pydantic-settings==2.7.1
+email-validator==2.2.0
+
+# PostgreSQL, migrations, and async ORM
+SQLAlchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+psycopg[binary]==3.2.3
+alembic==1.14.0
+
+# Redis, task queue, and rate limiting
+redis==5.2.1
+celery[redis]==5.4.0
+slowapi==0.1.9
+
+# Authentication and security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.1
+
+# Object storage and integrations
+boto3==1.35.90
+httpx==0.28.1
+tenacity==9.0.0
+
+# Vector search and embeddings
+qdrant-client==1.12.1
+sentence-transformers==3.3.1
+transformers==4.47.1
+torch==2.5.1
+
+# MLOps and orchestration
+mlflow==2.19.0
+prefect==3.1.12
+
+# Resume/document parsing and OCR
+pdfplumber==0.11.5
+pymupdf==1.25.1
+python-docx==1.1.2
+pytesseract==0.3.13
+Pillow==11.0.0
+
+# Observability and metrics
+structlog==24.4.0
+prometheus-fastapi-instrumentator==7.0.0
+
+# Data science utilities
+pandas==2.2.3
+numpy==1.26.4
+scikit-learn==1.6.0
+
+# LLM integrations and token accounting
+google-generativeai==0.8.3
+
+# WebSocket and parsing support
+websockets==14.1
+
+# Learning-to-rank
+xgboost==2.1.3
+joblib==1.4.2
+
+# Distributed tracing
+opentelemetry-api==1.29.0
+opentelemetry-sdk==1.29.0
+opentelemetry-exporter-otlp==1.29.0
+opentelemetry-instrumentation-fastapi==0.50b0

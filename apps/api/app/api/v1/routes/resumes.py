@@ -1,12 +1,13 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_auth
+from app.core.auth import get_current_auth, require_roles
+from app.core.security import UserRole
 from app.db.session import get_db
 from app.models.domain import Resume
+from app.repositories.resumes import ResumeRepository
 from app.schemas.auth import AuthContext
 from app.schemas.resume import ResumeRead, ResumeUploadResponse
 from app.services.resume_ingestion import ingest_resume
@@ -18,7 +19,7 @@ router = APIRouter()
 @router.post("/upload", response_model=ResumeUploadResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_resume(
     file: UploadFile = File(...),
-    auth: AuthContext = Depends(get_current_auth),
+    auth: AuthContext = Depends(require_roles(UserRole.admin, UserRole.recruiter)),
     db: AsyncSession = Depends(get_db),
     storage: ObjectStorage = Depends(get_object_storage),
 ) -> Resume:
@@ -31,13 +32,7 @@ async def get_resume(
     auth: AuthContext = Depends(get_current_auth),
     db: AsyncSession = Depends(get_db),
 ) -> Resume:
-    result = await db.execute(
-        select(Resume).where(
-            Resume.id == resume_id,
-            Resume.organization_id == auth.organization_id,
-        )
-    )
-    resume = result.scalar_one_or_none()
+    resume = await ResumeRepository(db).get_for_org(resume_id, auth.organization_id)
     if resume is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume not found")
     return resume

@@ -10,3 +10,14 @@ body {
   background: #f5f7fa;
   color: #17202a;
 }
+
+.dark body {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}

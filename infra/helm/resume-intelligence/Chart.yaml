@@ -1,0 +1,15 @@
+apiVersion: v2
+name: resume-intelligence
+description: Enterprise AI Resume Intelligence Platform - Production-grade hiring infrastructure
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - ai
+  - recruiting
+  - resume
+  - hiring
+  - machine-learning
+maintainers:
+  - name: Resume Intelligence Team
+    email: team@resume-intelligence.com

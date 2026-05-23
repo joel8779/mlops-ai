@@ -1,0 +1,44 @@
+from uuid import UUID
+
+from sqlalchemy import select
+
+from app.models.domain import Candidate, CandidateSkill, Resume
+from app.repositories.base import BaseRepository
+
+
+class CandidateRepository(BaseRepository[Candidate]):
+    model = Candidate
+
+    async def get_for_org(self, candidate_id: UUID, organization_id: UUID) -> Candidate | None:
+        result = await self.db.execute(
+            select(Candidate).where(
+                Candidate.id == candidate_id,
+                Candidate.organization_id == organization_id,
+                Candidate.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def list_for_org(self, organization_id: UUID, limit: int = 100) -> list[Candidate]:
+        result = await self.db.execute(
+            select(Candidate)
+            .where(Candidate.organization_id == organization_id, Candidate.deleted_at.is_(None))
+            .order_by(Candidate.created_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def skills_for_candidate(self, candidate_id: UUID) -> list[str]:
+        result = await self.db.execute(
+            select(CandidateSkill.normalized_skill).where(CandidateSkill.candidate_id == candidate_id)
+        )
+        return [row[0] for row in result.all()]
+
+    async def latest_resume(self, candidate_id: UUID) -> Resume | None:
+        result = await self.db.execute(
+            select(Resume)
+            .where(Resume.candidate_id == candidate_id, Resume.deleted_at.is_(None))
+            .order_by(Resume.created_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()

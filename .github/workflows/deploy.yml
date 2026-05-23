@@ -1,0 +1,19 @@
+name: deploy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build apps/api -t ${{ secrets.REGISTRY_URL }}/resume-api:${{ github.sha }}
+      - name: Push API image
+        run: |
+          echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login "${{ secrets.REGISTRY_URL }}" -u "${{ secrets.REGISTRY_USER }}" --password-stdin
+          docker push ${{ secrets.REGISTRY_URL }}/resume-api:${{ github.sha }}
+      - name: Deploy Helm chart
+        run: helm upgrade --install resume-intelligence infra/helm/resume-intelligence --set image.tag=${{ github.sha }}

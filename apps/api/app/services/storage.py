@@ -15,6 +15,11 @@ class StoredObject:
 
 
 class ObjectStorage:
+    """S3-compatible storage adapter.
+
+    MinIO is used locally; the same code works with AWS S3 in production.
+    """
+
     def __init__(self) -> None:
         self._client = boto3.client(
             "s3",
@@ -34,14 +39,14 @@ class ObjectStorage:
         )
         return StoredObject(key=key, bucket=settings.s3_bucket)
 
+    def upload_bytes(self, payload: bytes, key: str, content_type: str) -> StoredObject:
+        return self.upload_fileobj(BytesIO(payload), key, content_type)
+
     def download_bytes(self, key: str) -> bytes:
         response = self._client.get_object(Bucket=settings.s3_bucket, Key=key)
         body = response["Body"]
         with body:
             return body.read()
-
-    def upload_bytes(self, payload: bytes, key: str, content_type: str) -> StoredObject:
-        return self.upload_fileobj(BytesIO(payload), key, content_type)
 
 
 def get_object_storage() -> ObjectStorage:
