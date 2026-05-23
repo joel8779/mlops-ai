@@ -1,0 +1,61 @@
+name: observability-ci
+
+on:
+  push:
+    paths:
+      - "apps/api/app/observability/**"
+      - "apps/api/app/logging/**"
+      - "infra/grafana/**"
+      - "infra/alerts/**"
+      - "infra/monitoring/**"
+      - "scripts/ci/verify_observability.py"
+      - ".github/workflows/observability-ci.yml"
+  pull_request:
+    paths:
+      - "apps/api/app/observability/**"
+      - "apps/api/app/logging/**"
+      - "infra/grafana/**"
+      - "infra/alerts/**"
+      - "infra/monitoring/**"
+      - "scripts/ci/verify_observability.py"
+      - ".github/workflows/observability-ci.yml"
+
+permissions:
+  contents: read
+
+env:
+  ENVIRONMENT: test
+  OTEL_TRACES_EXPORTER: none
+  LLM_PROVIDER: disabled
+  GEMINI_API_KEY: test-gemini-key
+  JWT_SECRET_KEY: ci-test-secret-key-change-me
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: apps/api/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -r apps/api/requirements-dev.txt
+
+      - name: Validate observability
+        run: python scripts/ci/verify_observability.py
+
+      - name: Validate Prometheus rules
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+          for path in list(Path("infra/alerts").glob("*.yml")) + list(Path("infra/monitoring/prometheus/rules").glob("*.yml")):
+              yaml.safe_load(path.read_text())
+              print(f"valid={path}")
+          PY

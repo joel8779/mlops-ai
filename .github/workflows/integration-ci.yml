@@ -1,0 +1,84 @@
+name: integration-ci
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/**"
+      - "docker-compose.dev.yml"
+      - "scripts/ci/**"
+      - ".github/workflows/integration-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ENVIRONMENT: test
+  LLM_PROVIDER: disabled
+  GEMINI_API_KEY: test-gemini-key
+  JWT_SECRET_KEY: ci-test-secret-key-change-me
+  DATABASE_URL: postgresql+asyncpg://resume:resume@localhost:5432/resume_ai
+  SYNC_DATABASE_URL: postgresql+psycopg://resume:resume@localhost:5432/resume_ai
+  REDIS_URL: redis://localhost:6379/0
+  CELERY_BROKER_URL: redis://localhost:6379/1
+  CELERY_RESULT_BACKEND: redis://localhost:6379/2
+  QDRANT_URL: http://localhost:6333
+  S3_ENDPOINT_URL: http://localhost:9000
+  OTEL_TRACES_EXPORTER: none
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: resume
+          POSTGRES_PASSWORD: resume
+          POSTGRES_DB: resume_ai
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U resume -d resume_ai"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      qdrant:
+        image: qdrant/qdrant:v1.12.6
+        ports:
+          - 6333:6333
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: apps/api/requirements-dev.txt
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -r apps/api/requirements-dev.txt
+
+      - name: Validate runtime against services
+        run: |
+          python scripts/ci/verify_runtime.py
+          python scripts/verify_services.py
+
+      - name: Run migrations
+        working-directory: apps/api
+        run: alembic upgrade head
+
+      - name: Integration tests
+        working-directory: apps/api
+        run: python -m pytest -q -m "not integration"

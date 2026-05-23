@@ -64,7 +64,6 @@ opentelemetry-instrumentation-sqlalchemy==0.50b0
 opentelemetry-instrumentation-redis==0.50b0
 opentelemetry-instrumentation-httpx==0.50b0
 opentelemetry-instrumentation-celery==0.50b0
-opentelemetry-exporter-jaeger==1.21.0
 
 # Data science utilities
 pandas==2.2.3

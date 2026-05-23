@@ -1,0 +1,4 @@
+# Generated project constraints for deterministic CI installs.
+# Runtime and dev requirements are intentionally pinned; this file exists so CI,
+# Docker, and local bootstrap commands share one resolver boundary.
+-r requirements-dev.txt
