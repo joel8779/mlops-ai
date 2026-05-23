@@ -4,7 +4,7 @@ from app.observability.tracing.correlation import (
     current_trace_context,
     enrich_span,
 )
-from app.observability.tracing.tracer import configure_tracing, get_tracer, instrument_celery, traced_span
+from app.observability.tracing.tracer import configure_tracing, get_tracer, instrument_celery, traced_span, shutdown_tracing
 
 __all__ = [
     "CorrelationContext",
@@ -15,4 +15,5 @@ __all__ = [
     "get_tracer",
     "instrument_celery",
     "traced_span",
+    "shutdown_tracing",
 ]

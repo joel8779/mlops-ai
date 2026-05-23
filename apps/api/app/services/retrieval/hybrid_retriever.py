@@ -1,6 +1,5 @@
 """Hybrid Retriever - Combine vector and keyword search for optimal results."""
 
-from dataclasses import dataclass
 from enum import Enum
 from time import perf_counter
 from typing import Any, Optional
@@ -10,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.retrieval.bm25_indexer import BM25Indexer
 from app.services.retrieval.reranker import MetadataReranker
+from app.services.retrieval.types import RetrievalResult
 from app.services.semantic_search_service import SemanticSearchService
 from app.observability.metrics import (
     RETRIEVAL_LATENCY,
@@ -29,17 +29,6 @@ class FusionMethod(str, Enum):
     RRF = "rrf"  # Reciprocal Rank Fusion
     WEIGHTED = "weighted"  # Weighted linear combination
     CASCADE = "cascade"  # Vector first, then keyword
-
-
-@dataclass
-class RetrievalResult:
-    """Result from hybrid retrieval."""
-
-    candidate_id: UUID
-    score: float
-    vector_score: Optional[float] = None
-    keyword_score: Optional[float] = None
-    metadata: dict[str, Any] = None
 
 
 class HybridRetriever:

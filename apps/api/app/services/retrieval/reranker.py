@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models.domain import Candidate
-from app.services.retrieval.hybrid_retriever import RetrievalResult
+from app.services.retrieval.types import RetrievalResult
 
 
 @dataclass

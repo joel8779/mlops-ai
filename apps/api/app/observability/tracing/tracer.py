@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -15,6 +16,7 @@ from app.db.session import engine
 from app.observability.tracing.exporters import build_span_exporter
 
 _configured = False
+logger = logging.getLogger(__name__)
 
 
 def get_tracer(name: str):
@@ -111,3 +113,33 @@ def traced_span(name: str, **attributes: Any) -> Iterator[Any]:
     except Exception:
         # If tracing fails, continue without the span
         yield None
+
+
+async def shutdown_tracing() -> None:
+    """Gracefully shutdown OpenTelemetry tracing.
+
+    Flushes pending spans and shuts down the tracer provider.
+    Silently handles errors to ensure clean shutdown.
+    """
+    try:
+        provider = trace.get_tracer_provider()
+        if hasattr(provider, "shutdown"):
+            # Force flush of pending spans
+            if hasattr(provider, "force_flush"):
+                try:
+                    provider.force_flush(timeout_millis=5000)
+                except Exception:
+                    pass
+            # Shutdown the provider
+            try:
+                await provider.shutdown()
+            except Exception:
+                # Fallback to sync shutdown if async fails
+                try:
+                    provider.shutdown()
+                except Exception:
+                    pass
+        logger.info("tracing_shutdown_complete")
+    except Exception as exc:
+        # Log but don't fail shutdown on tracing errors
+        logger.warning("tracing_shutdown_error", error=str(exc), exc_info=False)

@@ -89,6 +89,7 @@ class Settings(BaseSettings):
     rate_limit_default: str = "100/minute"
     max_upload_bytes: int = 10 * 1024 * 1024
 
+    otel_enabled: bool = False
     otel_service_name: str = "resume-intelligence-api"
     otel_exporter_otlp_endpoint: str = "http://localhost:4317"
     otel_traces_exporter: str = "otlp"

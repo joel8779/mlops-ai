@@ -13,7 +13,6 @@ from app.schemas.jobs import JobDescriptionCreate, JobParseResult
 from app.services.embedding_service import EmbeddingService
 from app.services.extraction_service import ExtractionService
 from app.utils.files import read_validated_upload
-from app.workers.job_tasks import index_job_description_task
 
 SKILL_TERMS = {
     "python", "fastapi", "django", "flask", "postgresql", "mysql", "redis", "docker",
@@ -48,6 +47,8 @@ class JobIntelligenceService:
         self.db.add(job)
         await self.db.commit()
         await self.db.refresh(job)
+        # Lazy import to avoid circular dependency
+        from app.workers.job_tasks import index_job_description_task
         index_job_description_task.delay(str(job.id))
         return job
 

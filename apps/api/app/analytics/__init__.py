@@ -2,7 +2,7 @@
 
 from .pipelines import AnalyticsPipeline
 from .aggregations import MetricsAggregator
-from .dashboards import DashboardBuilder
+from .dashboard import DashboardBuilder
 from .forecasting import HiringForecaster
 
 __all__ = [
