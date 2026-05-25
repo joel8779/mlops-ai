@@ -4,9 +4,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 import redis.asyncio as redis
 import httpx
-import os
 from datetime import datetime
 
+from app.core.config import settings
 from app.db.session import async_session_maker, async_engine
 
 router = APIRouter()
@@ -42,7 +42,7 @@ async def readiness_check():
     
     # Check Redis
     try:
-        redis_client = redis.from_url(os.getenv("REDIS_URL"))
+        redis_client = redis.from_url(settings.redis_url)
         await redis_client.ping()
         health_status["dependencies"]["redis"] = "healthy"
     except Exception as e:
@@ -53,7 +53,7 @@ async def readiness_check():
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{os.getenv('QDRANT_URL')}/healthz",
+                f"{str(settings.qdrant_url).rstrip('/')}/healthz",
                 timeout=5.0
             )
             if response.status_code == 200:

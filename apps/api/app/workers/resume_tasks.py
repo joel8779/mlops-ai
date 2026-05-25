@@ -9,7 +9,6 @@ from app.db.session import AsyncSessionLocal
 from app.models.domain import Candidate, CandidateEmbedding, CandidateSkill, Resume, ResumeProcessingEvent, ResumeStatus
 from app.services.job_intelligence_service import SKILL_TERMS
 from app.services.embedding_service import EmbeddingService
-from app.services.extraction_service import ExtractionService
 from app.services.storage import ObjectStorage
 from app.workers.celery_app import celery_app
 
@@ -45,6 +44,8 @@ async def _parse_resume(resume_id: UUID) -> None:
         await db.commit()
 
         try:
+            from app.services.extraction_service import ExtractionService
+
             payload = ObjectStorage().download_bytes(resume.storage_key)
             parsed = ExtractionService().parse(payload, resume.content_type)
             resume.status = ResumeStatus.parsed

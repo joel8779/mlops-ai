@@ -35,6 +35,7 @@ def upgrade() -> None:
         "embedded",
         "failed",
         name="resumestatus",
+        create_type=False,
     )
     resume_status.create(op.get_bind(), checkfirst=True)
 

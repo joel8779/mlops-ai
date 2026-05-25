@@ -1,6 +1,7 @@
 """Runtime capabilities - Check optional dependencies and features."""
 
 import sys
+import importlib.metadata as metadata
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Optional
@@ -139,8 +140,8 @@ class RuntimeCapabilities:
             CapabilityInfo
         """
         try:
-            import google.generativeai as genai
-            version = getattr(genai, "__version__", "unknown")
+            from google import genai  # noqa: F401
+            version = metadata.version("google-genai")
             return CapabilityInfo(
                 name=Capability.LLM_GEMINI,
                 available=True,

@@ -27,8 +27,12 @@ def base_columns() -> list[sa.Column]:
 
 
 def upgrade() -> None:
-    feedback_action = postgresql.ENUM("shortlist", "reject", "interview", "hire", name="feedbackaction")
-    subscription_tier = postgresql.ENUM("free", "growth", "enterprise", name="subscriptiontier")
+    feedback_action = postgresql.ENUM(
+        "shortlist", "reject", "interview", "hire", name="feedbackaction", create_type=False
+    )
+    subscription_tier = postgresql.ENUM(
+        "free", "growth", "enterprise", name="subscriptiontier", create_type=False
+    )
     feedback_action.create(op.get_bind(), checkfirst=True)
     subscription_tier.create(op.get_bind(), checkfirst=True)
 

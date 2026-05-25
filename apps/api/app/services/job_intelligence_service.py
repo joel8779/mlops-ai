@@ -11,7 +11,6 @@ from app.models.domain import JobDescription, JobDescriptionEmbedding
 from app.schemas.auth import AuthContext
 from app.schemas.jobs import JobDescriptionCreate, JobParseResult
 from app.services.embedding_service import EmbeddingService
-from app.services.extraction_service import ExtractionService
 from app.utils.files import read_validated_upload
 
 SKILL_TERMS = {
@@ -53,6 +52,8 @@ class JobIntelligenceService:
         return job
 
     async def create_from_upload(self, auth: AuthContext, title: str, upload: UploadFile) -> JobDescription:
+        from app.services.extraction_service import ExtractionService
+
         payload = await read_validated_upload(upload, settings.max_upload_bytes)
         if upload.content_type not in {
             "application/pdf",

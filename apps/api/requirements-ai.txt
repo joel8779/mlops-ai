@@ -1,8 +1,11 @@
-# AI SDKs - PHASE 21
+# AI SDKs - PHASE 24.1
 # Layer 4: AI SDKs and integrations
-# Install after observability stack
+# Install after the core runtime with:
+#   pip install -r requirements-core.txt
+#   pip install -r requirements-ai.txt -c constraints.txt
 
-# Google Generative AI (Gemini)
-google-generativeai==0.8.3
+# Modern Google Gen AI SDK for Gemini.
+# This SDK uses HTTP transports by default and does not require protobuf/grpc.
+google-genai==2.6.0
 
 # Note: qdrant-client is in requirements-core.txt as it's needed for basic vector search

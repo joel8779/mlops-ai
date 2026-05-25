@@ -5,7 +5,7 @@ import importlib.metadata as metadata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Optional
 
 from app.logging import get_logger
 
@@ -54,7 +54,11 @@ class DependencyValidator:
             "redis": "5.0.0",
             "celery": "5.0.0",
             "qdrant-client": "1.0.0",
-            "google-generativeai": "0.8.0",
+            "google-genai": "2.6.0",
+            "protobuf": "6.31.1",
+            "grpcio": "1.76.0",
+            "grpcio-tools": "1.76.0",
+            "grpcio-status": "1.76.0",
             "prometheus-client": "0.20.0",
             "opentelemetry-api": "1.0.0",
         }

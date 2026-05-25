@@ -4,15 +4,20 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 from starlette.responses import JSONResponse
 
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+except ImportError:
+    Instrumentator = None
+
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.dependency_guard import assert_core_dependency_runtime
 from app.core.exceptions import install_exception_handlers
 from app.logging import configure_logging, get_logger
 from app.db.database import check_database, close_database
@@ -36,6 +41,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     # Startup
     logger.info("api_starting", environment=settings.environment, version=settings.app_version)
+    dependency_results = assert_core_dependency_runtime()
+    logger.info(
+        "core_dependency_runtime_validated",
+        dependencies={result.name: result.installed_version for result in dependency_results},
+    )
     try:
         yield
     except (asyncio.CancelledError, KeyboardInterrupt):
@@ -121,7 +131,8 @@ def create_app() -> FastAPI:
         return HealthResponse(status="alive", service=settings.app_name, version=settings.app_version)
 
     app.include_router(api_router, prefix="/api/v1")
-    Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+    if Instrumentator is not None:
+        Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
     return app
 
 

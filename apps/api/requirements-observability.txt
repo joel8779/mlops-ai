@@ -2,16 +2,8 @@
 # Layer 3: Observability stack
 # Install after core dependencies
 
-# Structured logging
-structlog==24.4.0
-
 # Metrics and monitoring
-prometheus-client==0.21.1
 prometheus-fastapi-instrumentator==7.0.0
-
-# OpenTelemetry - API and SDK
-opentelemetry-api==1.29.0
-opentelemetry-sdk==1.29.0
 
 # OpenTelemetry - Exporters
 opentelemetry-exporter-otlp==1.29.0

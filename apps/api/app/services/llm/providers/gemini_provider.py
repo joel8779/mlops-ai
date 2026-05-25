@@ -1,19 +1,12 @@
 """Production-grade Gemini provider with streaming, structured outputs, and enterprise features."""
 
 import asyncio
+import importlib.metadata as metadata
 import json
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any, AsyncGenerator, Callable, Optional
 
-import google.generativeai as genai
-from google.generativeai.types import (
-    GenerateContentResponse,
-    GenerationConfig,
-    HarmBlockThreshold,
-    HarmCategory,
-    ContentType,
-)
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -30,6 +23,19 @@ from app.services.llm.providers.safety_filters import SafetyFilter, SafetyLevel
 
 tracer = get_tracer(__name__)
 llm_observer = LLMObserver()
+
+
+def _load_genai_sdk() -> tuple[Any, Any]:
+    """Load the modern Google Gen AI SDK only when Gemini is actually used."""
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError as exc:
+        raise ImportError(
+            "Gemini requires google-genai. Install apps/api/requirements-ai.txt "
+            "with apps/api/constraints.txt after the core runtime is stable."
+        ) from exc
+    return genai, types
 
 
 class GeminiModel(str, Enum):
@@ -126,9 +132,12 @@ class GeminiProvider:
         if not self.api_key:
             raise ValueError("Gemini API key is required")
 
-        genai.configure(api_key=self.api_key)
+        genai, types = _load_genai_sdk()
         self.model = model
-        self.client = genai.GenerativeModel(model.value)
+        self.client = genai.Client(
+            api_key=self.api_key,
+            http_options=types.HttpOptions(api_version="v1beta"),
+        )
         self.token_tracker = token_tracker or TokenTracker()
         self.safety_filter = safety_filter or SafetyFilter()
 
@@ -166,19 +175,13 @@ class GeminiProvider:
                 span.set_attribute("llm.model", self.model.value)
                 span.set_attribute("llm.feature", feature)
 
-                config = GenerationConfig(
-                    temperature=options.temperature,
-                    top_p=options.top_p,
-                    top_k=options.top_k,
-                    max_output_tokens=options.max_output_tokens or self.model.max_tokens,
-                )
+                config = self._build_generation_config(options)
                 safety_settings = self._build_safety_settings(options.safety_level)
                 content = self._prepare_content(prompt, system)
-                response = await asyncio.to_thread(
-                    self.client.generate_content,
-                    content,
-                    generation_config=config,
-                    safety_settings=safety_settings,
+                response = await self.client.aio.models.generate_content(
+                    model=self.model.value,
+                    contents=content,
+                    config={**config, "safety_settings": safety_settings},
                 )
         except Exception as exc:
             llm_observer.record_failure("gemini", self.model.value, feature, metric_start, exc)
@@ -188,9 +191,9 @@ class GeminiProvider:
         latency_ms = (asyncio.get_event_loop().time() - start_time) * 1000
 
         # Extract metadata
-        prompt_tokens = response.usage_metadata.prompt_token_count if response.usage_metadata else 0
-        completion_tokens = response.usage_metadata.candidates_token_count if response.usage_metadata else 0
-        total_tokens = response.usage_metadata.total_token_count if response.usage_metadata else 0
+        prompt_tokens = getattr(response.usage_metadata, "prompt_token_count", None) or 0 if response.usage_metadata else 0
+        completion_tokens = getattr(response.usage_metadata, "candidates_token_count", None) or 0 if response.usage_metadata else 0
+        total_tokens = getattr(response.usage_metadata, "total_token_count", None) or 0 if response.usage_metadata else 0
 
         # Estimate cost
         cost_usd = self._estimate_cost(prompt_tokens, completion_tokens)
@@ -199,7 +202,7 @@ class GeminiProvider:
         safety_ratings = self._extract_safety_ratings(response)
 
         # Extract text
-        text = response.text if response.parts else ""
+        text = getattr(response, "text", "") or ""
 
         # Parse JSON if in JSON mode
         structured_data = None
@@ -238,7 +241,7 @@ class GeminiProvider:
             total_tokens=total_tokens,
             estimated_cost_usd=cost_usd,
             latency_ms=latency_ms,
-            finish_reason=response.candidates[0].finish_reason.name if response.candidates else "",
+            finish_reason=self._extract_finish_reason(response),
             safety_ratings=safety_ratings,
             structured_data=structured_data,
         )
@@ -272,18 +275,8 @@ class GeminiProvider:
         options.system_instruction = system
         metric_start = llm_observer.start_timer()
 
-        # Build generation config
-        config = GenerationConfig(
-            temperature=options.temperature,
-            top_p=options.top_p,
-            top_k=options.top_k,
-            max_output_tokens=options.max_output_tokens or self.model.max_tokens,
-        )
-
-        # Build safety settings
+        config = self._build_generation_config(options)
         safety_settings = self._build_safety_settings(options.safety_level)
-
-        # Prepare content
         content = self._prepare_content(prompt, system)
 
         try:
@@ -291,29 +284,33 @@ class GeminiProvider:
                 span.set_attribute("llm.provider", "gemini")
                 span.set_attribute("llm.model", self.model.value)
                 span.set_attribute("llm.feature", feature)
-                response = await asyncio.to_thread(
-                    self.client.generate_content,
-                    content,
-                    generation_config=config,
-                    safety_settings=safety_settings,
-                    stream=True,
+                chunks = await asyncio.to_thread(
+                    lambda: list(
+                        self.client.models.generate_content_stream(
+                            model=self.model.value,
+                            contents=content,
+                            config={**config, "safety_settings": safety_settings},
+                        )
+                    )
                 )
         except Exception as exc:
             llm_observer.record_failure("gemini", self.model.value, feature, metric_start, exc)
             raise
 
         full_text = ""
-        for chunk in response:
-            if chunk.text:
-                full_text += chunk.text
+        for chunk in chunks:
+            text = getattr(chunk, "text", "") or ""
+            if text:
+                full_text += text
                 if on_chunk:
-                    on_chunk(chunk.text)
-                yield chunk.text
+                    on_chunk(text)
+                yield text
 
         # Track usage after stream completes
-        if response.usage_metadata:
-            prompt_tokens = response.usage_metadata.prompt_token_count
-            completion_tokens = response.usage_metadata.candidates_token_count
+        usage_metadata = getattr(chunks[-1], "usage_metadata", None) if chunks else None
+        if usage_metadata:
+            prompt_tokens = getattr(usage_metadata, "prompt_token_count", None) or 0
+            completion_tokens = getattr(usage_metadata, "candidates_token_count", None) or 0
             cost_usd = self._estimate_cost(prompt_tokens, completion_tokens)
 
             self.token_tracker.track(
@@ -379,7 +376,21 @@ class GeminiProvider:
 
         return result
 
-    def _prepare_content(self, prompt: str, system: Optional[str]) -> list[ContentType]:
+    def _build_generation_config(self, options: GenerationOptions) -> dict[str, Any]:
+        """Build generation config for the Google Gen AI SDK."""
+        config: dict[str, Any] = {
+            "temperature": options.temperature,
+            "top_p": options.top_p,
+            "top_k": options.top_k,
+            "max_output_tokens": options.max_output_tokens or self.model.max_tokens,
+        }
+        if options.system_instruction:
+            config["system_instruction"] = options.system_instruction
+        if options.json_mode:
+            config["response_mime_type"] = "application/json"
+        return config
+
+    def _prepare_content(self, prompt: str, system: Optional[str]) -> str:
         """Prepare content for generation.
 
         Args:
@@ -387,42 +398,36 @@ class GeminiProvider:
             system: System instruction
 
         Returns:
-            List of content parts
+            Prompt content
         """
-        parts = [{"text": prompt}]
+        return prompt
 
-        if system:
-            # Set system instruction on the model
-            self.client._system_instruction = system
-
-        return parts
-
-    def _build_safety_settings(self, level: SafetyLevel) -> dict[HarmCategory, HarmBlockThreshold]:
+    def _build_safety_settings(self, level: SafetyLevel) -> list[dict[str, str]]:
         """Build safety settings based on level.
 
         Args:
             level: Safety level
 
         Returns:
-            Safety settings dictionary
+            Safety settings list
         """
         thresholds = {
-            SafetyLevel.BLOCK_NONE: HarmBlockThreshold.BLOCK_NONE,
-            SafetyLevel.BLOCK_LOW: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
-            SafetyLevel.BLOCK_MEDIUM: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-            SafetyLevel.BLOCK_HIGH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            SafetyLevel.BLOCK_NONE: "BLOCK_NONE",
+            SafetyLevel.BLOCK_LOW: "BLOCK_LOW_AND_ABOVE",
+            SafetyLevel.BLOCK_MEDIUM: "BLOCK_MEDIUM_AND_ABOVE",
+            SafetyLevel.BLOCK_HIGH: "BLOCK_ONLY_HIGH",
         }
 
-        threshold = thresholds.get(level, HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE)
+        threshold = thresholds.get(level, "BLOCK_MEDIUM_AND_ABOVE")
 
-        return {
-            HarmCategory.HARM_CATEGORY_HARASSMENT: threshold,
-            HarmCategory.HARM_CATEGORY_HATE_SPEECH: threshold,
-            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: threshold,
-            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: threshold,
-        }
+        return [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": threshold},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": threshold},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": threshold},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": threshold},
+        ]
 
-    def _extract_safety_ratings(self, response: GenerateContentResponse) -> dict[str, str]:
+    def _extract_safety_ratings(self, response: Any) -> dict[str, str]:
         """Extract safety ratings from response.
 
         Args:
@@ -432,10 +437,29 @@ class GeminiProvider:
             Dictionary of safety ratings
         """
         ratings = {}
-        if response.candidates and response.candidates[0].safety_ratings:
-            for rating in response.candidates[0].safety_ratings:
-                ratings[rating.category.name] = rating.probability.name
+        candidates = getattr(response, "candidates", None) or []
+        if candidates and getattr(candidates[0], "safety_ratings", None):
+            for rating in candidates[0].safety_ratings:
+                category = getattr(rating, "category", "")
+                probability = getattr(rating, "probability", "")
+                ratings[getattr(category, "name", category)] = getattr(probability, "name", probability)
         return ratings
+
+    def _extract_finish_reason(self, response: Any) -> str:
+        """Extract finish reason from a Gemini response."""
+        candidates = getattr(response, "candidates", None) or []
+        if not candidates:
+            return ""
+        finish_reason = getattr(candidates[0], "finish_reason", "")
+        return getattr(finish_reason, "name", finish_reason) or ""
+
+    @staticmethod
+    def sdk_version() -> str | None:
+        """Return installed Google Gen AI SDK version, if present."""
+        try:
+            return metadata.version("google-genai")
+        except metadata.PackageNotFoundError:
+            return None
 
     def _estimate_cost(self, prompt_tokens: int, completion_tokens: int) -> float:
         """Estimate cost in USD.

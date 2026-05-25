@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor, SpanExporter
 
 from app.core.config import settings
@@ -44,6 +43,8 @@ def build_span_exporter() -> SpanExporter | None:
     # OTLP exporter with safe initialization
     if exporter == "otlp":
         try:
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
             # Create OTLP exporter with controlled retries
             return OTLPSpanExporter(
                 endpoint=settings.otel_exporter_otlp_endpoint,

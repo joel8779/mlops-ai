@@ -37,6 +37,7 @@ def upgrade() -> None:
         "Hired",
         "Rejected",
         name="pipelinestage",
+        create_type=False,
     )
     job_status.create(op.get_bind(), checkfirst=True)
     pipeline_stage.create(op.get_bind(), checkfirst=True)
