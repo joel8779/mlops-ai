@@ -24,12 +24,16 @@ export function setTokens(accessToken: string, refreshToken: string): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
   localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  document.cookie = `${ACCESS_TOKEN_KEY}=${accessToken}; path=/; max-age=86400; SameSite=Lax`;
+  document.cookie = `${REFRESH_TOKEN_KEY}=${refreshToken}; path=/; max-age=604800; SameSite=Lax`;
 }
 
 export function clearTokens(): void {
   if (typeof window === "undefined") return;
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
+  document.cookie = `${ACCESS_TOKEN_KEY}=; path=/; max-age=0; SameSite=Lax`;
+  document.cookie = `${REFRESH_TOKEN_KEY}=; path=/; max-age=0; SameSite=Lax`;
 }
 
 // Token refresh
@@ -92,7 +96,7 @@ export async function apiFetch<T>(
       // Refresh failed, clear tokens and redirect to login
       clearTokens();
       if (typeof window !== "undefined") {
-        window.location.href = "/sign-in";
+        window.location.href = "/login";
       }
       throw new Error("Authentication failed");
     }
@@ -142,7 +146,7 @@ export const authApi = {
   logout() {
     clearTokens();
     if (typeof window !== "undefined") {
-      window.location.href = "/sign-in";
+      window.location.href = "/";
     }
   },
 };
@@ -167,6 +171,10 @@ export const jobsApi = {
 
 // Resumes API
 export const resumesApi = {
+  async list() {
+    return apiFetch("/resumes");
+  },
+
   async upload(file: File) {
     const formData = new FormData();
     formData.append("file", file);
@@ -225,13 +233,6 @@ export const aiApi = {
       body: JSON.stringify(data),
     });
   },
-
-  async copilot(data: { query: string; context?: Record<string, any>; top_k?: number }) {
-    return apiFetch("/ai/copilot", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-  },
 };
 
 // Matching API
@@ -267,5 +268,18 @@ export const feedbackApi = {
 export const analyticsApi = {
   async executive() {
     return apiFetch("/analytics/executive");
+  },
+};
+
+// Workspace API
+export const workspaceApi = {
+  async activation() {
+    return apiFetch("/workspace/activation");
+  },
+
+  async loadDemo() {
+    return apiFetch("/workspace/demo", {
+      method: "POST",
+    });
   },
 };

@@ -1,23 +1,26 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useAuth } from "@/lib/auth-context";
+import { usePathname, useRouter } from "next/navigation";
 import {
-  Terminal,
-  Home,
-  FileText,
-  Users,
-  BriefcaseBusiness,
-  Search,
-  MessageSquare,
+  Activity,
   BarChart3,
-  Settings,
+  BriefcaseBusiness,
+  Cpu,
+  FileText,
+  Home,
   LogOut,
   Menu,
+  Radar,
+  Search,
+  Settings,
+  Shield,
+  Users,
   X,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+import { getAccessToken } from "@/lib/api";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -29,7 +32,6 @@ const sidebarItems = [
   { icon: Users, label: "Candidates", href: "/candidates" },
   { icon: BriefcaseBusiness, label: "Jobs", href: "/jobs" },
   { icon: Search, label: "Search", href: "/search" },
-  { icon: MessageSquare, label: "AI Copilot", href: "/copilot" },
   { icon: BarChart3, label: "Analytics", href: "/analytics" },
   { icon: Settings, label: "Settings", href: "/settings" },
 ];
@@ -37,108 +39,139 @@ const sidebarItems = [
 export default function AppShell({ children }: AppShellProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user, loading, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    if (!loading && !user && !getAccessToken()) {
+      router.replace("/login");
+    }
+  }, [loading, router, user]);
 
   const handleLogout = () => {
     logout();
-    router.push("/landing");
+    router.replace("/");
   };
 
-  return (
-    <div className="min-h-screen bg-background text-foreground">
-      {/* Mobile sidebar overlay */}
-      {sidebarOpen && (
-        <div
-          onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-        />
-      )}
+  if (loading || (!user && !getAccessToken())) {
+    return (
+      <div className="neural-bg flex min-h-screen items-center justify-center text-foreground">
+        <div className="ops-panel-strong scanline rounded-lg p-8 text-center">
+          <Cpu className="mx-auto h-8 w-8 animate-pulse text-accent" />
+          <div className="mt-4 text-sm uppercase tracking-[0.32em] text-foreground-muted">Syncing session</div>
+        </div>
+      </div>
+    );
+  }
 
-      {/* Sidebar */}
-      <div
-        className={`fixed left-0 top-0 z-50 h-full w-72 bg-background-card border-r border-background-border lg:static lg:translate-x-0 transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+  return (
+    <div className="neural-bg min-h-screen text-foreground">
+      <div className="pointer-events-none fixed inset-0 ops-grid opacity-70" />
+      <div className="pointer-events-none fixed inset-x-0 top-0 h-48 bg-gradient-to-b from-accent/10 to-transparent" />
+
+      {sidebarOpen && <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden" />}
+
+      <aside
+        className={`fixed left-0 top-0 z-50 h-full w-72 border-r border-white/10 bg-background/78 backdrop-blur-2xl transition-transform duration-300 lg:translate-x-0 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
       >
         <div className="flex h-full flex-col">
-          {/* Logo */}
-          <div className="flex items-center justify-between p-6 border-b border-background-border">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-background-elevated flex items-center justify-center">
-                <Terminal className="h-5 w-5 text-foreground-muted" />
+          <div className="border-b border-white/10 p-5">
+            <div className="flex items-center justify-between">
+              <Link href="/dashboard" className="flex items-center gap-3">
+                <div className="h-11 w-11 rounded-lg border border-accent/30 bg-accent/10 shadow-glow">
+                  <div className="flex h-full w-full items-center justify-center">
+                    <Radar className="h-5 w-5 text-accent" />
+                  </div>
+                </div>
+                <div>
+                  <div className="text-base font-semibold tracking-wide">NEURAL OPS</div>
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-foreground-subtle">Command Center</div>
+                </div>
+              </Link>
+              <button onClick={() => setSidebarOpen(false)} className="rounded-md p-2 text-foreground-muted hover:bg-white/5 hover:text-foreground lg:hidden">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="mt-5 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+              <div className="flex items-center justify-between text-xs text-foreground-muted">
+                <span>System state</span>
+                <span className="text-success">ONLINE</span>
               </div>
-              <div>
-                <div className="font-semibold text-base">Resume Intelligence</div>
-                <div className="text-xs text-foreground-muted">Recruiting Operations</div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div className="h-full w-2/3 rounded-full bg-accent shadow-glow" />
               </div>
             </div>
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="lg:hidden text-foreground-muted hover:text-foreground"
-            >
-              <X className="h-5 w-5" />
-            </button>
           </div>
 
-          {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto p-4 space-y-1">
-            {sidebarItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-3 rounded-lg px-4 py-3 transition-colors ${
-                    isActive
-                      ? "bg-foreground text-background"
-                      : "text-foreground-muted hover:bg-background-elevated hover:text-foreground"
-                  }`}
-                >
-                  <Icon className="h-5 w-5" />
-                  <span className="font-medium text-sm">{item.label}</span>
-                </Link>
-              );
-            })}
+          <nav className="flex-1 overflow-y-auto p-4">
+            <div className="mb-3 px-3 text-[11px] uppercase tracking-[0.24em] text-foreground-subtle">Operations</div>
+            <div className="space-y-1">
+              {sidebarItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`group flex items-center gap-3 rounded-lg px-3 py-3 text-sm transition-all ${
+                      isActive
+                        ? "border border-accent/30 bg-accent/10 text-foreground shadow-glow"
+                        : "text-foreground-muted hover:border hover:border-white/10 hover:bg-white/[0.04] hover:text-foreground"
+                    }`}
+                  >
+                    <Icon className={`h-4 w-4 ${isActive ? "text-accent" : "text-foreground-subtle group-hover:text-accent"}`} />
+                    <span className="font-medium">{item.label}</span>
+                    {isActive && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-accent" />}
+                  </Link>
+                );
+              })}
+            </div>
           </nav>
 
-          {/* Logout */}
-          <div className="border-t border-background-border p-4">
+          <div className="border-t border-white/10 p-4">
+            <div className="mb-3 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-violet/10 text-violet-subtle">
+                  <Shield className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">{user?.full_name || user?.email}</div>
+                  <div className="text-xs text-foreground-subtle">Authenticated operator</div>
+                </div>
+              </div>
+            </div>
             <button
               onClick={handleLogout}
-              className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm text-foreground-muted hover:bg-background-elevated hover:text-foreground transition-colors"
+              className="flex w-full items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-foreground-muted transition-colors hover:border-error/30 hover:bg-error/10 hover:text-foreground"
             >
-              <LogOut className="h-5 w-5" />
-              Sign out
+              <LogOut className="h-4 w-4" />
+              Logout
             </button>
           </div>
         </div>
-      </div>
+      </aside>
 
-      {/* Main content */}
-      <div className="lg:pl-72">
-        {/* Topbar */}
-        <div className="sticky top-0 z-30 border-b border-background-border bg-background/95 backdrop-blur px-6 py-4 flex items-center gap-4">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="lg:hidden p-2 rounded-lg hover:bg-background-elevated transition-colors"
-          >
-            {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
-          <div className="flex-1" />
-          {user && (
-            <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-full bg-foreground/10 flex items-center justify-center">
-                <span className="text-sm font-medium text-foreground">
-                  {user.full_name?.[0] || user.email?.[0] || "U"}
-                </span>
-              </div>
+      <main className="relative min-h-screen lg:ml-72">
+        <header className="sticky top-0 z-30 border-b border-white/10 bg-background/70 px-4 py-3 backdrop-blur-xl sm:px-6">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="rounded-lg border border-white/10 bg-white/[0.03] p-2 text-foreground-muted hover:text-foreground lg:hidden">
+              {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <Activity className="h-4 w-4 text-accent" />
+              <div className="truncate text-xs uppercase tracking-[0.28em] text-foreground-subtle">Recruiting intelligence workstation</div>
             </div>
-          )}
-        </div>
+            <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-foreground-muted sm:flex">
+              <span className="h-1.5 w-1.5 rounded-full bg-success" />
+              Live API
+            </div>
+          </div>
+        </header>
 
-        {/* Page content */}
-        <div className="p-6">{children}</div>
-      </div>
+        <div className="relative z-10 p-4 sm:p-6 xl:p-8">{children}</div>
+      </main>
     </div>
   );
 }

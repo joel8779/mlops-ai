@@ -1,29 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { Loader2, Plus, RefreshCcw, Menu, X, LogOut, Home, UserSearch, MessageSquare, UploadCloud, BriefcaseBusiness, BarChart3, Target } from "lucide-react";
-import { useAuth } from "@/lib/auth-context";
-import { jobsApi } from "@/lib/api";
-import { fadeInUp } from "@/lib/animations";
+import { FormEvent, useEffect, useState } from "react";
+import { BriefcaseBusiness, Loader2, Plus, RefreshCcw } from "lucide-react";
+import AppShell from "@/components/app-shell";
+import { jobsApi, workspaceApi } from "@/lib/api";
 
 export default function JobsPage() {
-  const { user, logout } = useAuth();
   const [jobs, setJobs] = useState<any[]>([]);
+  const [workspace, setWorkspace] = useState<any>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const loadJobs = async () => {
     setLoading(true);
     setError("");
     try {
-      setJobs((await jobsApi.list()) as any[]);
+      const [jobData, workspaceData] = await Promise.all([jobsApi.list(), workspaceApi.activation()]);
+      setJobs(jobData as any[]);
+      setWorkspace(workspaceData);
     } catch (err: any) {
-      setError(err.message || "Failed to load jobs");
+      setError(err.message || "Unable to load jobs");
     } finally {
       setLoading(false);
     }
@@ -33,7 +32,7 @@ export default function JobsPage() {
     loadJobs();
   }, []);
 
-  const createJob = async (event: React.FormEvent) => {
+  const createJob = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
     setError("");
@@ -43,142 +42,108 @@ export default function JobsPage() {
       setDescription("");
       await loadJobs();
     } catch (err: any) {
-      setError(err.message || "Failed to create job");
+      setError(err.message || "Unable to create job");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Sidebar */}
-      <motion.div
-        initial={{ x: -300 }}
-        animate={{ x: sidebarOpen ? 0 : -300 }}
-        className="fixed left-0 top-0 z-50 h-full w-72 bg-background-card border-r border-background-border lg:static lg:translate-x-0"
-      >
-        <div className="border-b border-background-border px-6 py-4">
-          <div className="text-lg font-semibold text-foreground">Resume AI</div>
-          <div className="text-sm text-foreground-muted">Jobs</div>
-        </div>
-        <nav className="space-y-1 p-4">
-          {[
-            { href: "/dashboard", label: "Dashboard", icon: Home },
-            { href: "/candidates", label: "Candidates", icon: UserSearch },
-            { href: "/search", label: "Search", icon: Target },
-            { href: "/resumes", label: "Uploads", icon: UploadCloud },
-            { href: "/jobs", label: "Jobs", icon: BriefcaseBusiness },
-            { href: "/analytics", label: "Analytics", icon: BarChart3 },
-            { href: "/copilot", label: "Copilot", icon: MessageSquare }
-          ].map((item) => {
-            const Icon = item.icon;
-            return (
-              <a
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm transition-colors ${
-                  item.href === "/jobs" ? "bg-accent text-white" : "text-foreground-muted hover:bg-background-elevated hover:text-foreground"
-                }`}
-              >
-                <Icon size={18} />
-                {item.label}
-              </a>
-            );
-          })}
-        </nav>
-        <div className="absolute bottom-0 left-0 right-0 border-t border-background-border p-4">
-          <button
-            onClick={() => logout()}
-            className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm text-foreground-muted hover:bg-background-elevated hover:text-foreground transition-colors"
-          >
-            <LogOut size={18} />
-            Sign out
+    <AppShell>
+      <div className="space-y-6">
+        <div className="ops-panel-strong rounded-xl p-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-xs uppercase tracking-[0.28em] text-accent">Role command deck</div>
+            <h1 className="mt-2 text-xl font-semibold">Jobs</h1>
+            <p className="text-sm text-foreground-muted">Create job descriptions for matching and ATS scoring context.</p>
+          </div>
+          <button onClick={loadJobs} className="ops-button-secondary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm">
+            <RefreshCcw className="h-4 w-4" />
+            Refresh
           </button>
         </div>
-      </motion.div>
-
-      {/* Mobile overlay */}
-      {sidebarOpen && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-        />
-      )}
-
-      {/* Main content */}
-      <main className="lg:pl-72">
-        <div className="border-b border-background-border bg-background-card px-6 py-4 flex items-center gap-4">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="lg:hidden p-2 rounded-lg hover:bg-background-elevated transition-colors"
-          >
-            {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
-          </button>
-          <h1 className="text-xl font-semibold text-foreground">Job Descriptions</h1>
-        </div>
-
-        <section className="p-6">
-          <motion.div {...fadeInUp} className="grid gap-6 lg:grid-cols-[1fr_380px]">
-            <div className="rounded-xl bg-background-card border border-background-border p-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-foreground">Active roles</h2>
-                <button onClick={loadJobs} className="rounded-lg border border-background-border p-2 hover:border-accent/50 transition-colors" aria-label="Refresh jobs">
-                  <RefreshCcw size={16} className="text-foreground-muted" />
-                </button>
+        {error && <div className="rounded-lg border border-error/30 bg-error/10 p-4 text-sm text-error">{error}</div>}
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <section className="ops-panel rounded-xl p-5">
+            <h2 className="text-base font-semibold">Active roles</h2>
+            {loading ? (
+              <div className="mt-6 flex items-center gap-2 text-sm text-foreground-muted">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading jobs
               </div>
-              {error && <div className="mt-3 rounded-lg bg-error/10 border border-error/20 p-3 text-sm text-error">{error}</div>}
-              <div className="mt-3 divide-y divide-background-border text-sm">
-                {loading ? (
-                  <div className="flex items-center py-6 text-foreground-muted">
-                    <Loader2 className="mr-2 animate-spin" size={16} />
-                    Loading roles
-                  </div>
-                ) : jobs.length === 0 ? (
-                  <div className="py-6 text-foreground-muted">No roles yet. Create one to rank candidates.</div>
-                ) : (
-                  jobs.map((job) => (
-                    <div key={job.id} className="flex items-center justify-between gap-3 py-3">
+            ) : jobs.length === 0 ? (
+              <div className="mt-6 rounded-lg border border-white/10 bg-white/[0.03] p-6 text-sm text-foreground-muted">
+                No jobs yet. Create a role to rank candidates and generate matching context.
+              </div>
+            ) : (
+              <div className="mt-4 divide-y divide-white/10">
+                {jobs.map((job) => (
+                  <div key={job.id} className="py-4">
+                    <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="font-medium text-foreground">{job.title}</div>
-                        <div className="text-xs text-foreground-muted">
-                          {(job.required_skills || []).slice(0, 4).join(", ") || "Parsing pending"}
-                        </div>
+                        <div className="font-medium">{job.title}</div>
+                        <div className="mt-1 text-xs text-foreground-muted">{job.status}</div>
                       </div>
-                      <span className="rounded-lg bg-background-elevated px-2 py-1 text-xs text-foreground-muted">{job.status}</span>
+                      <BriefcaseBusiness className="h-5 w-5 text-foreground-muted" />
                     </div>
-                  ))
-                )}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {(job.required_skills || []).slice(0, 8).map((skill: string) => (
+                        <span key={skill} className="ops-chip rounded-md px-2 py-1 text-xs">
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
+            )}
+          </section>
+          <section className="ops-panel rounded-xl p-5 lg:col-span-2">
+            <h2 className="text-base font-semibold">Candidate matches</h2>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {(workspace?.match_insights || []).length === 0 ? (
+                <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm text-foreground-muted">
+                  No job-specific candidate matches yet. Create roles and process resumes to generate semantic match records.
+                </div>
+              ) : (
+                workspace.match_insights.map((match: any) => (
+                  <div key={`${match.candidate_id}-${match.job_description_id}`} className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-medium">{match.job_title}</div>
+                        <div className="mt-1 text-sm text-foreground-muted">{match.candidate_name}</div>
+                      </div>
+                      <div className="text-lg font-semibold text-accent">{Math.round(match.overall_score)}</div>
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-foreground-muted">{match.explanation}</p>
+                  </div>
+                ))
+              )}
             </div>
-            <form onSubmit={createJob} className="rounded-xl bg-background-card border border-background-border p-4">
-              <h2 className="text-sm font-semibold text-foreground">Create job</h2>
-              <input
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                className="mt-3 w-full rounded-lg border border-background-border bg-background-elevated px-4 py-3 text-sm text-foreground outline-none focus:border-accent/50 transition-colors"
-                placeholder="Title"
-                required
-              />
-              <textarea
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                className="mt-3 min-h-48 w-full rounded-lg border border-background-border bg-background-elevated px-4 py-3 text-sm text-foreground outline-none focus:border-accent/50 transition-colors"
-                placeholder="Paste job description"
-                required
-              />
-              <button
-                disabled={saving}
-                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-60 transition-colors"
-              >
-                {saving ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}
-                Parse and index
-              </button>
-            </form>
-          </motion.div>
-        </section>
-      </main>
-    </div>
+          </section>
+          <form onSubmit={createJob} className="ops-panel rounded-xl p-5">
+            <h2 className="text-base font-semibold">Create job</h2>
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              className="ops-input mt-4 w-full rounded-md px-3 py-3 text-sm"
+              placeholder="Role title"
+              required
+            />
+            <textarea
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              className="ops-input mt-3 min-h-48 w-full rounded-md px-3 py-3 text-sm"
+              placeholder="Paste job description"
+              required
+            />
+            <button disabled={saving} className="ops-button mt-4 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-60">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Parse and index
+            </button>
+          </form>
+        </div>
+      </div>
+    </AppShell>
   );
 }

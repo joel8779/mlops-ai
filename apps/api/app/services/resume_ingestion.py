@@ -2,6 +2,7 @@ from uuid import uuid4
 
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
+from structlog import get_logger
 
 from app.core.config import settings
 from app.models.domain import Resume, ResumeStatus
@@ -9,6 +10,8 @@ from app.schemas.auth import AuthContext
 from app.services.storage import ObjectStorage
 from app.utils.files import checksum, read_validated_upload, safe_extension
 from app.workers.resume_tasks import parse_resume_task
+
+logger = get_logger(__name__)
 
 
 async def ingest_resume(
@@ -39,5 +42,13 @@ async def ingest_resume(
     await db.refresh(resume)
 
     # Celery keeps expensive parsing/OCR/embedding work out of the request path.
-    parse_resume_task.delay(str(resume.id))
+    try:
+        parse_resume_task.apply_async(args=[str(resume.id)], retry=False, ignore_result=True)
+    except Exception as exc:
+        logger.error("resume_enqueue_failed", resume_id=str(resume.id), error=str(exc))
+        resume.status = ResumeStatus.failed
+        resume.parse_error = "Resume processing queue is unavailable"
+        resume.metadata_json = {**(resume.metadata_json or {}), "enqueue_error": str(exc)}
+        await db.commit()
+        await db.refresh(resume)
     return resume

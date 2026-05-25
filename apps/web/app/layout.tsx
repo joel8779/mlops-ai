@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { ScrollRestoration } from "@/components/scroll-restoration";
 
 export const metadata: Metadata = {
-  title: "Resume Intelligence",
-  description: "Operational intelligence infrastructure for modern recruiting teams"
+  title: "Neural Ops",
+  description: "Cyberpunk recruiting command center for AI hiring operations"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -13,7 +14,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <Providers>{children}</Providers>
-        <ScrollRestoration />
+        <Suspense fallback={null}>
+          <ScrollRestoration />
+        </Suspense>
       </body>
     </html>
   );

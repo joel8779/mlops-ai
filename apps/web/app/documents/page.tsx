@@ -1,234 +1,306 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { UploadCloud, FileText, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
-import { resumesApi } from "@/lib/api";
+import Link from "next/link";
+import { DragEvent, useCallback, useEffect, useState } from "react";
+import { AlertCircle, CheckCircle, Cpu, Database, FileText, Loader2, RefreshCcw, ScanLine, Search, UploadCloud, Users, Zap } from "lucide-react";
 import AppShell from "@/components/app-shell";
+import { API_BASE_URL, getAccessToken, resumesApi } from "@/lib/api";
 
-type UploadStatus = "idle" | "uploading" | "complete" | "error";
+type Resume = {
+  id: string;
+  candidate_id?: string | null;
+  original_filename: string;
+  content_type: string;
+  status: string;
+  parser_version?: string | null;
+  metadata_json?: Record<string, any>;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type UploadState = "idle" | "ready" | "uploading" | "processing" | "success" | "error";
+
+const terminalStatuses = new Set(["parsed", "embedded", "failed"]);
+
+function uploadResumeWithProgress(file: File, onProgress: (progress: number) => void): Promise<Resume> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const formData = new FormData();
+    formData.append("file", file);
+    xhr.open("POST", `${API_BASE_URL}/resumes/upload`);
+    const token = getAccessToken();
+    if (token) {
+      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    }
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText));
+        return;
+      }
+      reject(new Error(xhr.responseText || `Upload failed with ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error("Upload failed. Check API connectivity and try again."));
+    xhr.send(formData);
+  });
+}
 
 export default function DocumentsPage() {
-  const router = useRouter();
-  const [status, setStatus] = useState<UploadStatus>("idle");
-  const [error, setError] = useState("");
+  const [documents, setDocuments] = useState<Resume[]>([]);
   const [file, setFile] = useState<File | null>(null);
-  const [uploadResult, setUploadResult] = useState<any>(null);
+  const [state, setState] = useState<UploadState>("idle");
+  const [progress, setProgress] = useState(0);
+  const [currentResume, setCurrentResume] = useState<Resume | null>(null);
+  const [loadingList, setLoadingList] = useState(true);
+  const [error, setError] = useState("");
 
-  const handleFileSelect = useCallback((selectedFile: File) => {
-    // Validate file type
+  const loadDocuments = useCallback(async () => {
+    setLoadingList(true);
+    try {
+      setDocuments((await resumesApi.list()) as Resume[]);
+    } catch (err: any) {
+      setError(err.message || "Unable to load uploaded documents");
+    } finally {
+      setLoadingList(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDocuments();
+  }, [loadDocuments]);
+
+  const selectFile = (selectedFile: File) => {
     const validTypes = [
       "application/pdf",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "application/msword",
     ];
-    
-    if (!validTypes.includes(selectedFile.type)) {
-      setError("Please upload a PDF or DOCX file");
+    const validExtension = /\.(pdf|docx)$/i.test(selectedFile.name);
+    if (!validTypes.includes(selectedFile.type) && !validExtension) {
+      setError("Upload a PDF or DOCX resume.");
+      setState("error");
       return;
     }
-
-    // Validate file size (max 10MB)
     if (selectedFile.size > 10 * 1024 * 1024) {
-      setError("File size must be less than 10MB");
+      setError("File size must be 10MB or less.");
+      setState("error");
       return;
     }
-
     setFile(selectedFile);
+    setCurrentResume(null);
     setError("");
-  }, []);
+    setProgress(0);
+    setState("ready");
+  };
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    const droppedFile = e.dataTransfer.files[0];
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const droppedFile = event.dataTransfer.files[0];
     if (droppedFile) {
-      handleFileSelect(droppedFile);
-    }
-  }, [handleFileSelect]);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-  }, []);
-
-  const handleUpload = async () => {
-    if (!file) return;
-
-    setStatus("uploading");
-    setError("");
-
-    try {
-      const result = await resumesApi.upload(file);
-      setUploadResult(result);
-      setStatus("complete");
-    } catch (err: any) {
-      setStatus("error");
-      setError(err.message || "Failed to upload resume");
+      selectFile(droppedFile);
     }
   };
 
-  const handleReset = () => {
-    setFile(null);
-    setUploadResult(null);
-    setStatus("idle");
+  const pollResume = async (resumeId: string) => {
+    let latest = (await resumesApi.get(resumeId)) as Resume;
+    setCurrentResume(latest);
+    while (!terminalStatuses.has(latest.status)) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      latest = (await resumesApi.get(resumeId)) as Resume;
+      setCurrentResume(latest);
+    }
+    setState(latest.status === "failed" ? "error" : "success");
+    if (latest.status === "failed") {
+      setError("Document processing failed. Review backend worker logs for parser or OCR details.");
+    }
+    await loadDocuments();
+  };
+
+  const upload = async () => {
+    if (!file) return;
+    setState("uploading");
     setError("");
+    try {
+      const uploaded = await uploadResumeWithProgress(file, setProgress);
+      setCurrentResume(uploaded);
+      setState("processing");
+      await pollResume(uploaded.id);
+    } catch (err: any) {
+      setError(err.message || "Upload failed");
+      setState("error");
+    }
   };
 
   return (
     <AppShell>
-      <div>
-        <div className="mb-8">
-          <h1 className="text-xl font-semibold mb-2">Documents</h1>
-          <p className="text-sm text-foreground-muted">
-            Upload resumes and documents to parse candidates
-          </p>
+      <div className="space-y-8">
+        <div className="ops-panel-strong rounded-xl p-5 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-xs uppercase tracking-[0.28em] text-accent">Candidate intelligence ingestion</div>
+            <h1 className="mt-2 text-2xl font-semibold">Documents</h1>
+            <p className="text-sm text-foreground-muted">Upload resumes into OCR, parsing, embedding, indexing, and candidate creation workflows.</p>
+          </div>
+          <button
+            onClick={loadDocuments}
+            className="ops-button-secondary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm"
+          >
+            <RefreshCcw className="h-4 w-4" />
+            Refresh
+          </button>
+          </div>
         </div>
 
-        {status === "idle" && (
-          <div className="max-w-2xl">
+        <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="ops-panel rounded-xl p-6">
             <div
               onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              className="border-2 border-dashed border-background-border rounded-lg p-12 text-center hover:border-foreground/50 transition-colors cursor-pointer"
+              onDragOver={(event) => event.preventDefault()}
+              className="scanline rounded-xl border-2 border-dashed border-accent/25 bg-background/60 p-10 text-center transition-colors hover:border-accent/60"
             >
               <input
+                id="document-upload"
                 type="file"
-                accept=".pdf,.docx,.doc"
-                onChange={(e) => {
-                  const selectedFile = e.target.files?.[0];
-                  if (selectedFile) handleFileSelect(selectedFile);
-                }}
+                accept=".pdf,.docx"
                 className="hidden"
-                id="file-upload"
+                onChange={(event) => {
+                  const selectedFile = event.target.files?.[0];
+                  if (selectedFile) selectFile(selectedFile);
+                }}
               />
-              <label htmlFor="file-upload" className="cursor-pointer">
-                <div className="flex flex-col items-center">
-                  <UploadCloud className="h-12 w-12 text-foreground-muted mb-4" />
-                  <p className="text-base font-medium mb-2">
-                    Drop your resume here or click to browse
-                  </p>
-                  <p className="text-sm text-foreground-muted mb-4">
-                    PDF or DOCX, up to 10MB
-                  </p>
-                  <button className="inline-flex items-center gap-2 rounded-lg bg-foreground text-background px-4 py-2 text-sm font-medium hover:bg-foreground/90 transition-colors">
-                    Select File
-                  </button>
-                </div>
+              <label htmlFor="document-upload" className="block cursor-pointer">
+                <UploadCloud className="mx-auto h-12 w-12 text-accent" />
+                <div className="mt-4 font-medium">Drop candidate documents here</div>
+                <div className="mt-1 text-sm text-foreground-muted">PDF or DOCX resumes, up to 10MB</div>
               </label>
             </div>
 
-            {error && (
-              <div className="mt-4 flex items-center gap-2 text-sm text-error">
-                <AlertCircle className="h-4 w-4" />
-                {error}
-              </div>
-            )}
-
             {file && (
-              <div className="mt-6 p-4 rounded-lg bg-background-card border border-background-border">
-                <div className="flex items-center gap-3">
-                  <FileText className="h-8 w-8 text-foreground-muted" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{file.name}</p>
-                    <p className="text-xs text-foreground-muted">
-                      {(file.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
+              <div className="mt-5 rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <FileText className="h-8 w-8 flex-shrink-0 text-accent" />
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">{file.name}</div>
+                      <div className="text-xs text-foreground-muted">{(file.size / 1024 / 1024).toFixed(2)} MB</div>
+                    </div>
                   </div>
                   <button
-                    onClick={handleUpload}
-                    className="inline-flex items-center gap-2 rounded-lg bg-foreground text-background px-4 py-2 text-sm font-medium hover:bg-foreground/90 transition-colors"
+                    onClick={upload}
+                    disabled={state === "uploading" || state === "processing"}
+                    className="ops-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-60"
                   >
+                    {state === "uploading" || state === "processing" ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
                     Upload
                   </button>
                 </div>
               </div>
             )}
-          </div>
-        )}
 
-        {status === "uploading" && (
-          <div className="max-w-2xl">
-            <div className="p-6 rounded-lg bg-background-card border border-background-border">
-              <div className="flex items-center gap-4">
-                <Loader2 className="h-8 w-8 text-foreground-muted animate-spin" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Uploading document...</p>
-                  <p className="text-xs text-foreground-muted mt-1">
-                    {file?.name}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {status === "complete" && uploadResult && (
-          <div className="max-w-2xl">
-            <div className="p-6 rounded-lg bg-background-card border border-background-border">
-              <div className="flex items-center gap-4 mb-6">
-                <CheckCircle className="h-8 w-8 text-success" />
-                <div>
-                  <p className="text-sm font-medium">Upload successful</p>
-                  <p className="text-xs text-foreground-muted mt-1">
-                    Document processed and candidate created
-                  </p>
-                </div>
-              </div>
-
-              {uploadResult.candidate_id && (
-                <div className="space-y-4">
-                  <div className="p-4 rounded-md bg-background-elevated">
-                    <p className="text-xs text-foreground-muted mb-1">Candidate ID</p>
-                    <p className="text-sm font-mono">{uploadResult.candidate_id}</p>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => router.push(`/candidates/${uploadResult.candidate_id}`)}
-                      className="inline-flex items-center gap-2 rounded-lg bg-foreground text-background px-4 py-2 text-sm font-medium hover:bg-foreground/90 transition-colors"
-                    >
-                      View Candidate
-                    </button>
-                    <button
-                      onClick={handleReset}
-                      className="inline-flex items-center gap-2 rounded-lg bg-background-elevated border border-background-border px-4 py-2 text-sm font-medium hover:bg-background-elevated/80 transition-colors"
-                    >
-                      Upload Another
-                    </button>
+            {(state === "uploading" || state === "processing" || state === "success" || state === "error") && (
+              <div className="mt-5 rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                <div className="flex items-start gap-3">
+                  {state === "success" ? (
+                    <CheckCircle className="h-5 w-5 text-success" />
+                  ) : state === "error" ? (
+                    <AlertCircle className="h-5 w-5 text-error" />
+                  ) : (
+                    <Loader2 className="h-5 w-5 animate-spin text-foreground-muted" />
+                  )}
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">
+                      {state === "uploading" && "Uploading encrypted payload to backend"}
+                      {state === "processing" && `Ingestion pipeline: ${currentResume?.status || "queued"}`}
+                      {state === "success" && "Candidate intelligence indexed"}
+                      {state === "error" && "Ingestion workflow needs attention"}
+                    </div>
+                    {state === "uploading" && (
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+                        <div className="h-full bg-accent" style={{ width: `${progress}%` }} />
+                      </div>
+                    )}
+                    {state === "processing" && (
+                      <p className="mt-1 text-sm text-foreground-muted">Waiting for OCR, parser, embedding generation, indexing, and candidate creation.</p>
+                    )}
+                    {error && <p className="mt-2 text-sm text-error">{error}</p>}
+                    {currentResume?.candidate_id && (
+                      <div className="mt-4 flex flex-wrap gap-3">
+                        <Link href={`/candidates/${currentResume.candidate_id}`} className="ops-button inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold">
+                          <Users className="h-4 w-4" />
+                          View candidate
+                        </Link>
+                        <Link href="/search" className="ops-button-secondary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm">
+                          <Search className="h-4 w-4" />
+                          Semantic search
+                        </Link>
+                      </div>
+                    )}
                   </div>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
-        )}
 
-        {status === "error" && (
-          <div className="max-w-2xl">
-            <div className="p-6 rounded-lg bg-background-card border border-background-border">
-              <div className="flex items-center gap-4 mb-6">
-                <AlertCircle className="h-8 w-8 text-error" />
-                <div>
-                  <p className="text-sm font-medium">Upload failed</p>
-                  <p className="text-xs text-foreground-muted mt-1">{error}</p>
+          <aside className="ops-panel rounded-xl p-5">
+            <h2 className="text-base font-semibold">Orchestration pipeline</h2>
+            <div className="mt-4 space-y-3 text-sm">
+              {[
+                { status: "upload", icon: UploadCloud },
+                { status: "OCR scan", icon: ScanLine },
+                { status: "profile parse", icon: Cpu },
+                { status: "embedding", icon: Zap },
+                { status: "index ready", icon: Database },
+              ].map((item) => {
+                const Icon = item.icon;
+                return (
+                <div key={item.status} className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3 py-3">
+                  <span className="flex items-center gap-2 capitalize"><Icon className="h-4 w-4 text-accent" />{item.status}</span>
+                  <span className="text-xs text-foreground-muted">backend</span>
                 </div>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={handleReset}
-                  className="inline-flex items-center gap-2 rounded-lg bg-foreground text-background px-4 py-2 text-sm font-medium hover:bg-foreground/90 transition-colors"
-                >
-                  Try Again
-                </button>
-                <button
-                  onClick={() => router.push("/dashboard")}
-                  className="inline-flex items-center gap-2 rounded-lg bg-background-elevated border border-background-border px-4 py-2 text-sm font-medium hover:bg-background-elevated/80 transition-colors"
-                >
-                  Back to Dashboard
-                </button>
-              </div>
+              )})}
             </div>
-          </div>
-        )}
+          </aside>
+        </section>
+
+        <section className="ops-panel rounded-xl p-6">
+          <h2 className="text-base font-semibold">Uploaded documents</h2>
+          {loadingList ? (
+            <div className="mt-6 flex items-center gap-2 text-sm text-foreground-muted">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading documents
+            </div>
+          ) : documents.length === 0 ? (
+            <div className="mt-6 rounded-lg border border-white/10 bg-white/[0.03] p-6 text-sm text-foreground-muted">
+              No documents uploaded yet. Upload a resume to create candidates and unlock search, ATS scores, summaries, and matches.
+            </div>
+          ) : (
+            <div className="mt-4 divide-y divide-white/10">
+              {documents.map((document) => (
+                <div key={document.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{document.original_filename}</div>
+                    <div className="mt-1 text-xs text-foreground-muted">
+                      {document.status} {document.created_at ? `- ${new Date(document.created_at).toLocaleString()}` : ""}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {document.candidate_id && (
+                      <Link href={`/candidates/${document.candidate_id}`} className="rounded-md border border-white/10 px-3 py-2 text-sm hover:bg-white/[0.04]">
+                        Candidate
+                      </Link>
+                    )}
+                    <button onClick={() => pollResume(document.id)} className="rounded-md border border-white/10 px-3 py-2 text-sm hover:bg-white/[0.04]">
+                      Check status
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </AppShell>
   );

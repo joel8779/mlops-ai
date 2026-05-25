@@ -16,6 +16,14 @@ from app.services.storage import ObjectStorage, get_object_storage
 router = APIRouter()
 
 
+@router.get("", response_model=list[ResumeRead])
+async def list_resumes(
+    auth: AuthContext = Depends(get_current_auth),
+    db: AsyncSession = Depends(get_db),
+) -> list[Resume]:
+    return await ResumeRepository(db).list_for_org(auth.organization_id)
+
+
 @router.post("/upload", response_model=ResumeUploadResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_resume(
     file: UploadFile = File(...),

@@ -45,6 +45,8 @@ RUN apt-get update \
        tesseract-ocr \
        poppler-utils \
     && useradd --create-home --shell /usr/sbin/nologin appuser \
+    && mkdir -p /app/runtime/model-cache/huggingface \
+    && chown -R appuser:appuser /app/runtime \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /wheels /wheels
@@ -56,6 +58,7 @@ RUN python -m pip install --no-index --find-links=/wheels -r requirements-core.t
     && python -m pip install --no-index --find-links=/wheels -r requirements-embeddings.txt -c constraints.txt \
     && python -m pip install --no-index --find-links=/wheels -r requirements-ocr.txt -c constraints.txt \
     && python -m pip install --no-index --find-links=/wheels -r requirements-worker.txt -c constraints.txt \
+    && python -c "from importlib import metadata; required={'protobuf':'6.31.1','grpcio':'1.76.0','grpcio-tools':'1.76.0','grpcio-status':'1.76.0'}; installed={name: metadata.version(name) for name in required}; print(installed); bad=[f'{name}=={version} expected {required[name]}' for name, version in installed.items() if version != required[name]]; bad and (_ for _ in ()).throw(SystemExit('; '.join(bad)))" \
     && python -m pip check \
     && rm -rf /wheels
 

@@ -6,38 +6,40 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Graphite enterprise palette
         background: {
-          DEFAULT: "#111315",
-          surface: "#15181B",
-          elevated: "#1B1F24",
-          card: "#20252B",
-          border: "#2D333B",
+          DEFAULT: "#09090B",
+          surface: "#0F1115",
+          elevated: "#151821",
+          card: "rgba(20,24,32,0.78)",
+          border: "rgba(255,255,255,0.08)",
         },
         foreground: {
-          DEFAULT: "#F5F7FA",
-          muted: "#C7CDD4",
-          subtle: "#8B949E",
-          disabled: "#6E7681",
+          DEFAULT: "#F8FAFC",
+          muted: "#CBD5E1",
+          subtle: "#64748B",
+          disabled: "#475569",
         },
-        // Single muted amber accent
         accent: {
-          DEFAULT: "#D6A756",
-          muted: "#8B7335",
-          subtle: "#EBC585",
+          DEFAULT: "#38BDF8",
+          muted: "#075985",
+          subtle: "#7DD3FC",
         },
-        // Semantic colors (minimal, muted)
+        violet: {
+          DEFAULT: "#8B5CF6",
+          muted: "#4C1D95",
+          subtle: "#C4B5FD",
+        },
         success: {
-          DEFAULT: "#3FB950",
-          muted: "#238636",
+          DEFAULT: "#22C55E",
+          muted: "#166534",
         },
         warning: {
-          DEFAULT: "#D29922",
-          muted: "#9A6700",
+          DEFAULT: "#F59E0B",
+          muted: "#92400E",
         },
         error: {
-          DEFAULT: "#F85149",
-          muted: "#B62324",
+          DEFAULT: "#FB7185",
+          muted: "#9F1239",
         },
       },
       spacing: {
@@ -59,10 +61,10 @@ const config: Config = {
         '2xl': '1rem',
       },
       boxShadow: {
-        // Subtle shadows
-        'subtle': '0 1px 2px 0 rgba(0, 0, 0, 0.3)',
-        'medium': '0 4px 6px -1px rgba(0, 0, 0, 0.4)',
-        'large': '0 10px 15px -3px rgba(0, 0, 0, 0.4)',
+        'subtle': '0 1px 2px 0 rgba(0, 0, 0, 0.4)',
+        'medium': '0 12px 40px -24px rgba(56, 189, 248, 0.45)',
+        'large': '0 24px 80px -40px rgba(139, 92, 246, 0.55)',
+        'glow': '0 0 32px rgba(56, 189, 248, 0.16)',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],

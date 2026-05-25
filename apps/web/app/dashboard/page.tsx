@@ -1,182 +1,280 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { 
-  BarChart3, 
-  Bot, 
-  BriefcaseBusiness, 
-  UploadCloud, 
+import {
+  Activity,
+  BarChart3,
+  Bot,
+  BriefcaseBusiness,
+  CheckCircle,
+  Cpu,
+  Database,
+  FileText,
+  Loader2,
+  Radar,
+  Search,
+  UploadCloud,
   Users,
-  ArrowUpRight
+  Zap,
 } from "lucide-react";
-import { analyticsApi } from "@/lib/api";
 import AppShell from "@/components/app-shell";
+import { analyticsApi, candidatesApi, resumesApi, workspaceApi } from "@/lib/api";
+
+const pipelineLabels: Record<string, string> = {
+  uploaded: "Uploaded",
+  queued: "Queued",
+  parsing: "OCR / parse",
+  parsed: "Parsed",
+  embedded: "Embedded",
+  failed: "Failed",
+};
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
+  const [activation, setActivation] = useState<any>(null);
   const [analytics, setAnalytics] = useState<any>(null);
+  const [candidates, setCandidates] = useState<any[]>([]);
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [demoLoading, setDemoLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  useEffect(() => {
-    loadAnalytics();
-  }, []);
-
-  const loadAnalytics = async () => {
+  const load = async () => {
+    setLoading(true);
+    setError("");
     try {
-      const data = await analyticsApi.executive();
-      setAnalytics(data);
-    } catch (error) {
-      console.error("Failed to load analytics:", error);
+      const activationData = await workspaceApi.activation();
+      setActivation(activationData);
+      if ((activationData as any).activated) {
+        const [analyticsData, candidateData, documentData] = await Promise.all([
+          analyticsApi.executive(),
+          candidatesApi.list(),
+          resumesApi.list(),
+        ]);
+        setAnalytics(analyticsData);
+        setCandidates(candidateData as any[]);
+        setDocuments(documentData as any[]);
+      } else {
+        setAnalytics(null);
+        setCandidates([]);
+        setDocuments([]);
+      }
+    } catch (err: any) {
+      setError(err.message || "Unable to load workspace state");
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
-    return (
-      <AppShell>
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="h-8 w-8 rounded-full border-2 border-foreground-border border-t-foreground animate-spin" />
-        </div>
-      </AppShell>
-    );
-  }
+  useEffect(() => {
+    load();
+  }, []);
 
-  const hasData = analytics && (analytics.total_candidates > 0 || analytics.total_jobs > 0);
+  const loadDemo = async () => {
+    setDemoLoading(true);
+    setError("");
+    try {
+      const response = (await workspaceApi.loadDemo()) as any;
+      setActivation(response.activation);
+      await load();
+    } catch (err: any) {
+      setError(err.message || "Unable to load demo workspace");
+    } finally {
+      setDemoLoading(false);
+    }
+  };
 
-  const stats = [
-    { label: "Candidates", value: analytics?.total_candidates?.toString() || "0", icon: Users },
-    { label: "Active jobs", value: analytics?.total_jobs?.toString() || "0", icon: BriefcaseBusiness },
-    { label: "Avg match", value: analytics?.ranking_precision ? Math.round(analytics.ranking_precision * 100) + "%" : "N/A", icon: BarChart3 },
-    { label: "AI actions", value: analytics?.total_actions?.toString() || "0", icon: Bot },
-  ];
-
-  const stages = [
-    { key: "applied", label: "Applied", count: analytics?.hiring_funnel?.applied || 0 },
-    { key: "screening", label: "Screening", count: analytics?.hiring_funnel?.screening || 0 },
-    { key: "interview", label: "Interview", count: analytics?.hiring_funnel?.interview || 0 },
-    { key: "technical_round", label: "Technical", count: analytics?.hiring_funnel?.technical_round || 0 },
-    { key: "final_round", label: "Final", count: analytics?.hiring_funnel?.final_round || 0 },
-    { key: "hired", label: "Hired", count: analytics?.hiring_funnel?.hired || 0 },
-    { key: "rejected", label: "Rejected", count: analytics?.hiring_funnel?.rejected || 0 },
+  const counts = activation?.counts || {};
+  const pipeline = activation?.pipeline || {};
+  const activity = activation?.activity || [];
+  const insights = activation?.match_insights || [];
+  const metrics = [
+    { label: "Candidates", value: counts.candidates ?? analytics?.total_candidates ?? 0, icon: Users, tone: "text-accent" },
+    { label: "Active jobs", value: counts.jobs ?? analytics?.total_jobs ?? 0, icon: BriefcaseBusiness, tone: "text-violet" },
+    { label: "Embedded resumes", value: counts.embedded_resumes ?? 0, icon: Database, tone: "text-success" },
+    { label: "Semantic matches", value: counts.semantic_matches ?? 0, icon: Bot, tone: "text-warning" },
   ];
 
   return (
     <AppShell>
-      <div>
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-xl font-semibold">Dashboard</h1>
-            <p className="text-sm text-foreground-muted">Recruiting intelligence</p>
-          </div>
-          <button
-            onClick={() => router.push("/documents")}
-            className="inline-flex items-center gap-2 rounded-lg bg-foreground text-background px-4 py-2 text-sm font-medium hover:bg-foreground/90 transition-colors"
-          >
-            <UploadCloud className="h-4 w-4" />
-            Upload
-          </button>
-        </div>
-
-        {!hasData ? (
-          <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-            <div className="h-16 w-16 rounded-full bg-background-elevated flex items-center justify-center mb-6">
-              <UploadCloud className="h-8 w-8 text-foreground-muted" />
+      <div className="space-y-6">
+        <section className="ops-panel-strong holo-border rounded-xl p-5 sm:p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.28em] text-accent">
+                <Radar className="h-4 w-4" />
+                Recruiting mission control
+              </div>
+              <h1 className="mt-3 text-3xl font-semibold tracking-tight">Neural Ops Command Center</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-foreground-muted">
+                Backend-visible recruiting intelligence: ingestion, OCR, embeddings, semantic matching, ATS scoring, and workflow activity.
+              </p>
             </div>
-            <h2 className="text-xl font-semibold mb-2">Get Started</h2>
-            <p className="text-foreground-muted max-w-md mb-6">
-              Upload your first resume to start using recruiting intelligence
-            </p>
-            <button
-              onClick={() => router.push("/documents")}
-              className="inline-flex items-center gap-2 rounded-lg bg-foreground text-background px-6 py-3 text-sm font-medium hover:bg-foreground/90 transition-colors"
-            >
-              <UploadCloud className="h-4 w-4" />
-              Upload Resume
-            </button>
+            <div className="flex flex-wrap gap-3">
+              <Link href="/documents" className="ops-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold">
+                <UploadCloud className="h-4 w-4" />
+                Upload resumes
+              </Link>
+              <button onClick={loadDemo} disabled={demoLoading} className="ops-button-secondary inline-flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm disabled:opacity-60">
+                {demoLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+                Load demo workspace
+              </button>
+            </div>
           </div>
+        </section>
+
+        {error && <div className="rounded-lg border border-error/30 bg-error/10 p-4 text-sm text-error">{error}</div>}
+
+        {loading ? (
+          <div className="ops-panel flex min-h-[360px] items-center justify-center rounded-xl">
+            <Loader2 className="h-8 w-8 animate-spin text-accent" />
+          </div>
+        ) : !activation?.activated ? (
+          <section className="ops-panel-strong scanline rounded-xl p-8 sm:p-10">
+            <div className="mx-auto max-w-3xl text-center">
+              <Zap className="mx-auto h-11 w-11 text-accent" />
+              <h2 className="mt-4 text-2xl font-semibold">Welcome to Neural Ops.</h2>
+              <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-foreground-muted">
+                Import candidate intelligence to activate your workspace. Neural Ops comes alive after resumes, jobs, embeddings, matches, and workflow events exist in the backend.
+              </p>
+              <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+                <Link href="/documents" className="ops-button inline-flex items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold">
+                  <UploadCloud className="h-4 w-4" />
+                  Upload resumes
+                </Link>
+                <button onClick={loadDemo} disabled={demoLoading} className="ops-button-secondary inline-flex items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm disabled:opacity-60">
+                  {demoLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+                  Load demo workspace
+                </button>
+              </div>
+            </div>
+          </section>
         ) : (
           <>
-            {/* Stats Grid */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-              {stats.map((stat) => {
-                const Icon = stat.icon;
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {metrics.map((metric) => {
+                const Icon = metric.icon;
                 return (
-                  <div
-                    key={stat.label}
-                    className="rounded-lg bg-background-card border border-background-border p-6"
-                  >
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-background-elevated">
-                        <Icon className="h-5 w-5 text-foreground-muted" />
-                      </div>
+                  <div key={metric.label} className="ops-panel rounded-xl p-5">
+                    <div className="flex items-center justify-between text-sm text-foreground-muted">
+                      {metric.label}
+                      <Icon className={`h-5 w-5 ${metric.tone}`} />
                     </div>
-                    <div className="text-2xl font-semibold mb-1">{stat.value}</div>
-                    <div className="text-sm text-foreground-muted">{stat.label}</div>
+                    <div className="mt-4 text-3xl font-semibold">{metric.value}</div>
+                    <div className="mt-3 text-xs uppercase tracking-[0.18em] text-foreground-subtle">backend state</div>
                   </div>
                 );
               })}
             </div>
 
-            {/* Main Grid */}
-            <div className="grid gap-6 lg:grid-cols-3">
-              {/* Hiring Pipeline */}
-              <div className="rounded-lg bg-background-card border border-background-border p-6 lg:col-span-2">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-base font-semibold">Hiring Pipeline</h2>
+            <div className="grid gap-6 xl:grid-cols-3">
+              <section className="ops-panel rounded-xl p-5 xl:col-span-2">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-semibold">AI ingestion pipeline</h2>
+                  <Activity className="h-4 w-4 text-accent" />
                 </div>
-                <div className="grid gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
-                  {stages.map((stage) => (
-                    <div
-                      key={stage.key}
-                      className="rounded-md bg-background-elevated border border-background-border p-3"
-                    >
-                      <div className="text-xs font-medium text-foreground mb-2">{stage.label}</div>
-                      <div className="text-xl font-semibold text-foreground mb-1">{stage.count}</div>
-                      <div className="text-xs text-foreground-muted">candidates</div>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {Object.keys(pipelineLabels).map((key) => (
+                    <div key={key} className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs text-foreground-subtle">{pipelineLabels[key]}</div>
+                        {Number(pipeline[key] || 0) > 0 ? <CheckCircle className="h-4 w-4 text-success" /> : <Cpu className="h-4 w-4 text-foreground-subtle" />}
+                      </div>
+                      <div className="mt-3 text-2xl font-semibold">{pipeline[key] || 0}</div>
                     </div>
                   ))}
                 </div>
-              </div>
+              </section>
 
-              {/* Quick Actions */}
-              <div className="space-y-6">
-                {/* Semantic Search */}
-                <div className="rounded-lg bg-background-card border border-background-border p-6">
-                  <h2 className="text-base font-semibold mb-4">Semantic Search</h2>
-                  <div className="relative">
-                    <input
-                      className="w-full rounded-md bg-background-elevated border border-background-border px-3 py-2 pr-10 text-sm text-foreground placeholder-foreground-muted focus:outline-none focus:border-foreground/50 transition-colors"
-                      placeholder="Find Python engineers..."
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          router.push("/search");
-                        }
-                      }}
-                    />
-                    <button
-                      onClick={() => router.push("/search")}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 rounded-md bg-foreground text-background flex items-center justify-center hover:bg-foreground/90 transition-colors"
-                    >
-                      <ArrowUpRight className="h-4 w-4" />
-                    </button>
+              <section className="ops-panel rounded-xl p-5">
+                <h2 className="text-base font-semibold">Next best actions</h2>
+                <div className="mt-4 space-y-3">
+                  {(activation.recommendations || []).map((item: string) => (
+                    <div key={item} className="rounded-lg border border-white/10 bg-white/[0.03] p-3 text-sm leading-6 text-foreground-muted">
+                      {item}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 grid gap-3">
+                  <Link href="/search" className="ops-button-secondary inline-flex items-center gap-2 rounded-lg px-3 py-3 text-sm">
+                    <Search className="h-4 w-4" />
+                    Run semantic search
+                  </Link>
+                  <Link href="/analytics" className="ops-button-secondary inline-flex items-center gap-2 rounded-lg px-3 py-3 text-sm">
+                    <Bot className="h-4 w-4" />
+                    Review intelligence
+                  </Link>
+                </div>
+              </section>
+
+              <section className="ops-panel rounded-xl p-5">
+                <h2 className="text-base font-semibold">Operational activity</h2>
+                <div className="mt-4 space-y-3">
+                  {activity.length === 0 ? (
+                    <p className="text-sm text-foreground-muted">No activity emitted yet.</p>
+                  ) : (
+                    activity.slice(0, 8).map((event: any) => (
+                      <div key={event.id} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-medium">{event.label}</div>
+                          <span className="rounded-full border border-accent/20 px-2 py-0.5 text-[11px] uppercase tracking-[0.14em] text-accent">{event.source}</span>
+                        </div>
+                        <div className="mt-1 text-xs text-foreground-subtle">{new Date(event.created_at).toLocaleString()}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+
+              <section className="ops-panel rounded-xl p-5 xl:col-span-2">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-semibold">Semantic match intelligence</h2>
+                  <BarChart3 className="h-4 w-4 text-accent" />
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {insights.length === 0 ? (
+                    <p className="text-sm text-foreground-muted">No match insights yet. Create jobs and run ranking to populate this panel.</p>
+                  ) : (
+                    insights.map((insight: any) => (
+                      <div key={`${insight.candidate_id}-${insight.job_description_id}`} className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="font-medium">{insight.candidate_name || "Candidate"}</div>
+                            <div className="mt-1 text-xs text-foreground-subtle">{insight.job_title}</div>
+                          </div>
+                          <div className="text-lg font-semibold text-accent">{Math.round(insight.overall_score)}</div>
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-foreground-muted">{insight.explanation}</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {(insight.matched_skills || []).slice(0, 5).map((skill: string) => (
+                            <span key={skill} className="ops-chip rounded-md px-2 py-1 text-xs">{skill}</span>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+
+              <section className="ops-panel rounded-xl p-5 xl:col-span-3">
+                <h2 className="text-base font-semibold">Recent backend objects</h2>
+                <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                    <div className="mb-3 flex items-center gap-2 text-sm font-medium"><FileText className="h-4 w-4 text-accent" />Documents</div>
+                    <div className="space-y-2 text-sm text-foreground-muted">
+                      {documents.slice(0, 4).map((document) => <div key={document.id}>{document.original_filename} - {document.status}</div>)}
+                      {documents.length === 0 && <div>No uploaded resumes.</div>}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                    <div className="mb-3 flex items-center gap-2 text-sm font-medium"><Users className="h-4 w-4 text-accent" />Candidates</div>
+                    <div className="space-y-2 text-sm text-foreground-muted">
+                      {candidates.slice(0, 4).map((candidate) => <div key={candidate.id}>{candidate.full_name || candidate.email || "Unnamed"} - {candidate.latest_resume_status || "profile"}</div>)}
+                      {candidates.length === 0 && <div>No parsed candidates.</div>}
+                    </div>
                   </div>
                 </div>
-
-                {/* Upload Action */}
-                <div className="rounded-lg bg-background-card border border-background-border p-6">
-                  <h2 className="text-base font-semibold mb-4">Quick Upload</h2>
-                  <button
-                    onClick={() => router.push("/documents")}
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-background-elevated border border-background-border px-4 py-3 text-sm font-medium hover:bg-background-elevated/80 transition-colors"
-                  >
-                    <UploadCloud className="h-4 w-4" />
-                    Upload Resume
-                  </button>
-                </div>
-              </div>
+              </section>
             </div>
           </>
         )}
