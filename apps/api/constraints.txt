@@ -7,6 +7,8 @@ grpcio==1.76.0
 grpcio-tools==1.76.0
 grpcio-status==1.76.0
 protobuf==6.31.1
+
+# OpenTelemetry - pinned for protobuf 6.x compatibility
 opentelemetry-api==1.42.1
 opentelemetry-sdk==1.42.1
 opentelemetry-semantic-conventions==0.63b1
@@ -24,27 +26,20 @@ opentelemetry-instrumentation-httpx==0.63b1
 opentelemetry-instrumentation-celery==0.63b1
 opentelemetry-util-http==0.63b1
 
-# Phase 24.1 Gemini guardrails.
-# Keep the legacy Gemini SDK out of resolver attempts because it pins
-# google-ai-generativelanguage releases that can require protobuf<6.
+# Phase 28: Google Gen AI SDK (modern, protobuf-6 compatible)
 google-genai==2.6.0
-google-generativeai!=0.8.3,!=0.8.4,!=0.8.5,!=0.8.6
-google-ai-generativelanguage>=0.10.0
 
-# Phase 24.2 embedding guardrails.
-# Keep embeddings CPU-only and separate from OCR/training/runtime-heavy ML.
+# Phase 28: Embedding guardrails - CPU-only, protobuf-6 compatible
 sentence-transformers==3.3.1
 transformers==4.53.0
 torch==2.5.1+cpu
 tokenizers==0.21.2
 safetensors==0.5.3
 
-# Phase 24.3 worker/orchestration guardrails.
+# Phase 28: Worker/orchestration guardrails
 celery==5.4.0
 redis==5.2.1
 prefect==3.1.12
-mlflow!=2.19.0
-mlflow-skinny!=2.19.0
 websockets==13.1
 click==8.1.8
 packaging==24.2

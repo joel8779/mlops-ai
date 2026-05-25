@@ -1,9 +1,12 @@
-# Layered dependencies - PHASE 21
-# Install in order: core -> observability -> ai -> ml -> dev
+# Layered dependencies - PHASE 28
+# Install in order: core -> observability -> ai -> embeddings -> worker -> ocr -> dev
+# NOTE: requirements-ml.txt is NOT included - ML/training layer is isolated from runtime SaaS
 -r requirements-core.txt
 -r requirements-observability.txt
 -r requirements-ai.txt
--r requirements-ml.txt
+-r requirements-embeddings.txt
+-r requirements-worker.txt
+-r requirements-ocr.txt
 
 # Testing
 pytest==8.3.4

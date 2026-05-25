@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from app.core.paths import get_repo_root_cached
 from prometheus_client import REGISTRY
 
 
@@ -14,7 +15,7 @@ def test_required_aiops_metrics_are_registered():
 
 
 def test_grafana_dashboards_are_valid_json():
-    root = Path(__file__).resolve().parents[4] / "infra" / "grafana" / "dashboards"
+    root = get_repo_root_cached() / "infra" / "grafana" / "dashboards"
     dashboards = list(root.glob("*.json"))
 
     assert dashboards

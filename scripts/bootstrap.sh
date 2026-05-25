@@ -5,13 +5,13 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 resolve_python() {
-  for candidate in python3.11 python3.12 python; do
-    if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import sys; raise SystemExit(0 if (3, 11) <= sys.version_info[:2] < (3, 13) else 1)'; then
+  for candidate in python3.11 python; do
+    if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import sys; raise SystemExit(0 if (3, 11) <= sys.version_info[:2] < (3, 12) else 1)'; then
       echo "$candidate"
       return 0
     fi
   done
-  echo "Python 3.11 or 3.12 is required. Install Python 3.11/3.12, then rerun scripts/bootstrap.sh." >&2
+  echo "Python 3.11 is required. Install Python 3.11, then rerun scripts/bootstrap.sh." >&2
   return 1
 }
 

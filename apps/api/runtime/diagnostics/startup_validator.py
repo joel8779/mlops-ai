@@ -157,7 +157,7 @@ class StartupValidator:
             "redis",
             "celery",
             "qdrant_client",
-            "google.generativeai",
+            "google.genai",
         ]
 
         failed_imports = []

@@ -101,6 +101,12 @@ services:
     command: uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --reload
     env_file:
       - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://resume:resume@postgres:5432/resume_ai
+      - SYNC_DATABASE_URL=postgresql+psycopg://resume:resume@postgres:5432/resume_ai
+      - REDIS_URL=redis://redis:6379/0
+      - QDRANT_URL=http://qdrant:6333
+      - S3_ENDPOINT_URL=http://minio:9000
     volumes:
       - ./apps/api/app:/app/app
       - ./apps/api/alembic:/app/alembic

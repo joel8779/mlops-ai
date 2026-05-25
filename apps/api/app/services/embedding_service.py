@@ -10,6 +10,7 @@ from qdrant_client.http.models import Distance, FieldCondition, Filter, MatchAny
 
 from app.core.config import settings
 from app.core.ml_capabilities import ml_capabilities
+from app.core.paths import get_repo_root_cached
 from app.observability.metrics import (
     EMBEDDING_GENERATION_DURATION_MS,
     EMBEDDING_LATENCY,
@@ -20,7 +21,7 @@ from app.observability.metrics import (
 from app.observability.tracing import get_tracer
 
 tracer = get_tracer(__name__)
-REPO_ROOT = Path(__file__).resolve().parents[4]
+REPO_ROOT = get_repo_root_cached()
 
 
 class EmbeddingRuntimeError(RuntimeError):

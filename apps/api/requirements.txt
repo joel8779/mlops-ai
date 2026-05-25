@@ -1,83 +1,9 @@
-# Web API and ASGI server
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-python-multipart==0.0.20
-websockets==13.1
-
-# Settings and validation
-pydantic==2.10.4
-pydantic-settings==2.7.1
-email-validator==2.2.0
-
-# PostgreSQL, migrations, and async ORM
-SQLAlchemy[asyncio]==2.0.36
-asyncpg==0.30.0
-psycopg[binary]==3.2.3
-alembic==1.14.0
-
-# Redis, task queue, and rate limiting
-redis==5.2.1
-celery[redis]==5.4.0
-slowapi==0.1.9
-
-# Authentication and security
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-bcrypt==4.2.1
-cryptography==44.0.0
-
-# Object storage, billing, and integrations
-boto3==1.35.90
-botocore==1.35.90
-httpx==0.28.1
-tenacity==9.0.0
-stripe==11.4.1
-neo4j==5.27.0
-
-# Vector search, embeddings, and graph intelligence
-qdrant-client==1.12.1
-sentence-transformers==3.3.1
-transformers==4.47.1
-torch==2.12.0
-networkx==3.4.2
-
-# MLOps and orchestration
-# MLflow is intentionally excluded from the stable runtime because
-# mlflow-skinny 2.19.0 requires protobuf<6.
-prefect==3.1.12
-
-# Resume/document parsing and OCR
-pdfplumber==0.11.5
-pymupdf==1.25.1
-python-docx==1.1.2
-pytesseract==0.3.13
-Pillow==11.0.0
-
-# Observability and metrics
-structlog==24.4.0
-prometheus-client==0.21.1
-prometheus-fastapi-instrumentator==7.0.0
-opentelemetry-api==1.42.1
-opentelemetry-sdk==1.42.1
-opentelemetry-exporter-otlp==1.42.1
-opentelemetry-exporter-otlp-proto-common==1.42.1
-opentelemetry-exporter-otlp-proto-grpc==1.42.1
-opentelemetry-exporter-otlp-proto-http==1.42.1
-opentelemetry-proto==1.42.1
-opentelemetry-instrumentation-fastapi==0.63b1
-opentelemetry-instrumentation-sqlalchemy==0.63b1
-opentelemetry-instrumentation-redis==0.63b1
-opentelemetry-instrumentation-httpx==0.63b1
-opentelemetry-instrumentation-celery==0.63b1
-
-# Data science utilities
-pandas==2.2.3
-numpy==1.26.4
-scikit-learn==1.6.0
-
-# LLM integrations and token accounting
-google-genai==2.6.0
-
-# Learning-to-rank
-xgboost==2.1.3
-joblib==1.4.2
+# Layered dependencies - PHASE 28
+# Install in order: core -> observability -> ai -> embeddings -> worker -> ocr
+# NOTE: ML/training layer (requirements-ml.txt) is isolated from runtime SaaS
+-r requirements-core.txt
+-r requirements-observability.txt
+-r requirements-ai.txt
+-r requirements-embeddings.txt
+-r requirements-worker.txt
+-r requirements-ocr.txt

@@ -1,11 +1,11 @@
 #!/bin/bash
-# Full Runtime Recovery Script - PHASE 21
-# Bash version for Linux/Mac
+# Authoritative Runtime Recovery Script - PHASE 28
+# Canonical installation process with layered requirements architecture
 
 set -e
 
 echo "============================================================"
-echo "Full Runtime Recovery - PHASE 21"
+echo "Authoritative Runtime Recovery - PHASE 28"
 echo "============================================================"
 
 # Step 1: Validate Python version
@@ -14,12 +14,12 @@ echo "Step 1: Validating Python version..."
 PYTHON_VERSION=$(python --version 2>&1)
 echo "  Current Python: $PYTHON_VERSION"
 
-if [[ $PYTHON_VERSION =~ "Python 3.1[12]" ]]; then
+if [[ $PYTHON_VERSION =~ "Python 3.11" ]]; then
     echo "  ✓ Python version is compatible"
 else
-    echo "  ✗ Python version is not compatible (requires 3.11 or 3.12)"
+    echo "  ✗ Python version is not compatible (requires 3.11)"
     echo ""
-    echo "Please install Python 3.11 or 3.12 from https://www.python.org/downloads/"
+    echo "Please install Python 3.11 from https://www.python.org/downloads/"
     exit 1
 fi
 
@@ -58,53 +58,81 @@ echo "Step 6: Upgrading pip, setuptools, and wheel..."
 python -m pip install --upgrade pip setuptools wheel
 echo "  ✓ pip, setuptools, wheel upgraded"
 
-# Step 7: Install GRPC ecosystem first (for Windows compatibility)
+# Step 7: Install Layer 1 - Core Runtime
 echo ""
-echo "Step 7: Installing GRPC ecosystem..."
-pip install --no-cache-dir grpcio==1.76.0 grpcio-tools==1.76.0 grpcio-status==1.76.0 protobuf==6.31.1
-echo "  ✓ GRPC ecosystem installed"
+echo "Step 7: Installing Layer 1 - Core Runtime..."
+python -m pip install --no-cache-dir -r apps/api/requirements-core.txt -c apps/api/constraints.txt
+echo "  ✓ Core runtime installed"
 
-# Step 8: Validate GRPC installation
+# Step 8: Install Layer 2 - Observability
 echo ""
-echo "Step 8: Validating GRPC installation..."
-python scripts/validate_grpc.py
+echo "Step 8: Installing Layer 2 - Observability..."
+python -m pip install --no-cache-dir -r apps/api/requirements-observability.txt -c apps/api/constraints.txt
+echo "  ✓ Observability installed"
 
-# Step 9: Install core dependencies
+# Step 9: Install Layer 3 - AI (Google Gen AI SDK)
 echo ""
-echo "Step 9: Installing core dependencies..."
-pip install --no-cache-dir -r apps/api/requirements-core.txt -c apps/api/constraints.txt
-echo "  ✓ Core dependencies installed"
+echo "Step 9: Installing Layer 3 - AI (Google Gen AI SDK)..."
+python -m pip install --no-cache-dir -r apps/api/requirements-ai.txt -c apps/api/constraints.txt
+echo "  ✓ AI SDK installed"
 
-# Step 10: Validate compiled packages
+# Step 10: Install Layer 4 - Embeddings (CPU-only)
 echo ""
-echo "Step 10: Validating compiled packages..."
-python -c "import grpc; from grpc._cython import cygrpc; print('✓ GRPC cygrpc validated')"
+echo "Step 10: Installing Layer 4 - Embeddings (CPU-only)..."
+python -m pip install --no-cache-dir -r apps/api/requirements-embeddings.txt -c apps/api/constraints.txt
+echo "  ✓ Embeddings installed"
 
-# Step 11: Validate imports
+# Step 11: Install Layer 5 - Worker
 echo ""
-echo "Step 11: Validating imports..."
+echo "Step 11: Installing Layer 5 - Worker..."
+python -m pip install --no-cache-dir -r apps/api/requirements-worker.txt -c apps/api/constraints.txt
+echo "  ✓ Worker installed"
+
+# Step 12: Install Layer 6 - OCR
+echo ""
+echo "Step 12: Installing Layer 6 - OCR..."
+python -m pip install --no-cache-dir -r apps/api/requirements-ocr.txt -c apps/api/constraints.txt
+echo "  ✓ OCR installed"
+
+# Step 13: Validate dependency guardrails
+echo ""
+echo "Step 13: Validating dependency guardrails..."
+cd apps/api
+python -c "from app.core.dependency_guard import assert_core_dependency_runtime; assert_core_dependency_runtime()"
+echo "  ✓ Dependency guardrails validated"
+cd ../..
+
+# Step 14: Validate imports
+echo ""
+echo "Step 14: Validating imports..."
 cd apps/api
 python -c "import app.main"
 echo "  ✓ Imports validated"
 cd ../..
 
-# Step 12: Validate FastAPI startup
+# Step 15: Validate FastAPI startup
 echo ""
-echo "Step 12: Validating FastAPI startup..."
+echo "Step 15: Validating FastAPI startup..."
 cd apps/api
 python -c "from app.main import create_app; app = create_app(); print('✓ FastAPI app created successfully')"
 echo "  ✓ FastAPI startup validated"
 cd ../..
 
+# Step 16: Run pip check
+echo ""
+echo "Step 16: Running pip check..."
+python -m pip check
+echo "  ✓ No dependency conflicts"
+
 echo ""
 echo "============================================================"
-echo "✓ Full runtime recovery complete"
+echo "✓ Authoritative runtime recovery complete"
 echo "============================================================"
 echo ""
 echo "Next steps:"
-echo "1. Start infrastructure: docker compose up -d postgres redis qdrant minio mlflow"
+echo "1. Start infrastructure: docker compose up -d postgres redis qdrant minio"
 echo "2. Run migrations: cd apps/api && alembic upgrade head"
 echo "3. Start backend: cd apps/api && uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --reload"
 echo ""
-echo "Optional: Install ML dependencies"
+echo "Optional: Install ML/training layer (NOT for runtime SaaS)"
 echo "  pip install -r apps/api/requirements-ml.txt"

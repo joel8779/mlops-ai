@@ -2,9 +2,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+from app.core.paths import get_repo_root_cached
+
 
 def test_verify_env_script_accepts_example_contract():
-    root = Path(__file__).resolve().parents[4]
+    root = get_repo_root_cached()
     result = subprocess.run(
         [sys.executable, str(root / "scripts" / "verify_env.py")],
         cwd=root,
