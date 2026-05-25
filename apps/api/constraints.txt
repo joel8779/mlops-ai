@@ -7,6 +7,22 @@ grpcio==1.76.0
 grpcio-tools==1.76.0
 grpcio-status==1.76.0
 protobuf==6.31.1
+opentelemetry-api==1.42.1
+opentelemetry-sdk==1.42.1
+opentelemetry-semantic-conventions==0.63b1
+opentelemetry-exporter-otlp==1.42.1
+opentelemetry-exporter-otlp-proto-common==1.42.1
+opentelemetry-exporter-otlp-proto-grpc==1.42.1
+opentelemetry-exporter-otlp-proto-http==1.42.1
+opentelemetry-proto==1.42.1
+opentelemetry-instrumentation==0.63b1
+opentelemetry-instrumentation-asgi==0.63b1
+opentelemetry-instrumentation-fastapi==0.63b1
+opentelemetry-instrumentation-sqlalchemy==0.63b1
+opentelemetry-instrumentation-redis==0.63b1
+opentelemetry-instrumentation-httpx==0.63b1
+opentelemetry-instrumentation-celery==0.63b1
+opentelemetry-util-http==0.63b1
 
 # Phase 24.1 Gemini guardrails.
 # Keep the legacy Gemini SDK out of resolver attempts because it pins
@@ -15,5 +31,21 @@ google-genai==2.6.0
 google-generativeai!=0.8.3,!=0.8.4,!=0.8.5,!=0.8.6
 google-ai-generativelanguage>=0.10.0
 
-# Core dependencies
--r requirements-core.txt
+# Phase 24.2 embedding guardrails.
+# Keep embeddings CPU-only and separate from OCR/training/runtime-heavy ML.
+sentence-transformers==3.3.1
+transformers==4.53.0
+torch==2.5.1+cpu
+tokenizers==0.21.2
+safetensors==0.5.3
+
+# Phase 24.3 worker/orchestration guardrails.
+celery==5.4.0
+redis==5.2.1
+prefect==3.1.12
+mlflow!=2.19.0
+mlflow-skinny!=2.19.0
+websockets==13.1
+click==8.1.8
+packaging==24.2
+pytz==2024.2

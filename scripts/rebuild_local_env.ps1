@@ -41,7 +41,7 @@ Write-Host "  ✓ pip upgraded"
 
 # Step 5: Install core dependencies
 Write-Host "`nStep 5: Installing core dependencies..."
-pip install -r apps/api/requirements-core.txt
+pip install -r apps/api/requirements-core.txt -c apps/api/constraints.txt
 if ($LASTEXITCODE -eq 0) {
     Write-Host "  ✓ Core dependencies installed"
 } else {

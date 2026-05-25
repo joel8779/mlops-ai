@@ -1,7 +1,7 @@
 """Image Parser - Parse and understand resume images."""
 
 import io
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, Tuple
 
@@ -35,9 +35,9 @@ class ParseResult:
 
     regions: list[ImageRegion]
     text_regions: list[ImageRegion]
+    metadata: dict = field(default_factory=dict)
     profile_image: Optional[bytes] = None
     signature: Optional[bytes] = None
-    metadata: dict
 
 
 class ImageParser:

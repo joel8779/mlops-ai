@@ -1,0 +1,15 @@
+# Embedding runtime - PHASE 24.2
+# Install after core and Gemini layers with:
+#   pip install -r requirements-embeddings.txt -c constraints.txt
+#
+# This layer is CPU-only and intentionally excludes OCR, training frameworks,
+# MLflow, Prefect, pandas, xgboost, and GPU/CUDA packages.
+
+# Use PyTorch CPU wheels when a local version tag is requested.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+sentence-transformers==3.3.1
+transformers==4.53.0
+torch==2.5.1+cpu
+tokenizers==0.21.2
+safetensors==0.5.3

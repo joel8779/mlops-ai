@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, AsyncGenerator, Callable, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.core.redis import get_redis_client
 from app.observability.metrics import (

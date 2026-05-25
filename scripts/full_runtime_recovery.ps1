@@ -50,7 +50,7 @@ Write-Host "  OK pip, setuptools, wheel upgraded"
 
 # Step 7: Install core dependencies (without GRPC/qdrant for now)
 Write-Host "`nStep 7: Installing core dependencies (without GRPC/qdrant)..."
-pip install --no-cache-dir -r apps/api/requirements-core.txt
+pip install --no-cache-dir -r apps/api/requirements-core.txt -c apps/api/constraints.txt
 if ($LASTEXITCODE -eq 0) {
     Write-Host "  OK Core dependencies installed"
 } else {
@@ -66,7 +66,7 @@ Write-Host "Core API will work without vector search capabilities"
 Write-Host "`nTo install GRPC/qdrant:"
 Write-Host "1. Install Visual C++ Build Tools from https://visualstudio.microsoft.com/downloads/"
 Write-Host "2. Select 'Desktop development with C++'"
-Write-Host "3. Run: pip install grpcio==1.60.0 grpcio-tools==1.60.0 grpcio-status==1.60.0 protobuf==4.25.1 qdrant-client==1.12.1"
+Write-Host "3. Run: pip install grpcio==1.76.0 grpcio-tools==1.76.0 grpcio-status==1.76.0 protobuf==6.31.1 qdrant-client==1.12.1"
 Write-Host "`nNext steps:"
 Write-Host "1. Validate runtime: python scripts\runtime_validation_matrix.py"
 Write-Host "2. Start infrastructure: docker compose up -d postgres redis minio mlflow"

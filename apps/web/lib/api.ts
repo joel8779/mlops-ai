@@ -4,6 +4,12 @@ export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://loca
 const ACCESS_TOKEN_KEY = "access_token";
 const REFRESH_TOKEN_KEY = "refresh_token";
 
+type TokenPair = {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+};
+
 export function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(ACCESS_TOKEN_KEY);
@@ -56,10 +62,15 @@ export async function apiFetch<T>(
   retryCount = 0
 ): Promise<T> {
   const accessToken = getAccessToken();
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...(init?.headers ?? {}),
+  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
+  const headers: Record<string, string> = {
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
   };
+  if (init?.headers) {
+    new Headers(init.headers).forEach((value, key) => {
+      headers[key] = value;
+    });
+  }
 
   // Add auth header if token exists and not skipping auth
   if (accessToken && !init?.skipAuth) {
@@ -89,23 +100,36 @@ export async function apiFetch<T>(
 
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(error || `API error: ${response.status}`);
+    let message = error || `API error: ${response.status}`;
+    try {
+      const parsed = JSON.parse(error);
+      const parsedMessage = parsed.detail || parsed.message;
+      if (parsedMessage) {
+        message = typeof parsedMessage === "string" ? parsedMessage : JSON.stringify(parsedMessage);
+      }
+    } catch {
+      // Keep the raw response text when the backend does not return JSON.
+    }
+    throw new Error(message);
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
   return response.json() as Promise<T>;
 }
 
 // Auth API
 export const authApi = {
   async register(data: { email: string; password: string; full_name: string; organization_name: string }) {
-    return apiFetch("/auth/register", {
+    return apiFetch<TokenPair>("/auth/register", {
       method: "POST",
       body: JSON.stringify(data),
     });
   },
 
   async login(data: { email: string; password: string }) {
-    return apiFetch("/auth/login", {
+    return apiFetch<TokenPair>("/auth/login", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -158,6 +182,17 @@ export const resumesApi = {
   },
 };
 
+// Candidates API
+export const candidatesApi = {
+  async list() {
+    return apiFetch("/candidates");
+  },
+
+  async get(id: string) {
+    return apiFetch(`/candidates/${id}`);
+  },
+};
+
 // Search API
 export const searchApi = {
   async candidates(data: { query: string; limit?: number; offset?: number; skills?: string[]; location?: string }) {
@@ -193,6 +228,35 @@ export const aiApi = {
 
   async copilot(data: { query: string; context?: Record<string, any>; top_k?: number }) {
     return apiFetch("/ai/copilot", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+};
+
+// Matching API
+export const matchingApi = {
+  async rank(data: { job_description_id: string; limit?: number }) {
+    return apiFetch("/matching/rank", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+};
+
+// ATS API
+export const atsApi = {
+  async scoreResume(resumeId: string) {
+    return apiFetch(`/ats/resumes/${resumeId}/score`, {
+      method: "POST",
+    });
+  },
+};
+
+// Feedback API
+export const feedbackApi = {
+  async ranking(data: { candidate_id: string; job_description_id?: string; action: string; rank_position?: number }) {
+    return apiFetch("/feedback/ranking", {
       method: "POST",
       body: JSON.stringify(data),
     });

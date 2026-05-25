@@ -53,7 +53,15 @@ export default function DashboardPage() {
     { label: "AI actions", value: analytics?.total_actions?.toString() || "0", icon: Bot },
   ];
 
-  const stages = ["Applied", "Screening", "Interview", "Technical Round", "Final Round", "Hired", "Rejected"];
+  const stages = [
+    { key: "applied", label: "Applied" },
+    { key: "screening", label: "Screening" },
+    { key: "interview", label: "Interview" },
+    { key: "technical_round", label: "Technical Round" },
+    { key: "final_round", label: "Final Round" },
+    { key: "hired", label: "Hired" },
+    { key: "rejected", label: "Rejected" },
+  ];
 
   const funnelData = analytics?.hiring_funnel || {};
 
@@ -94,10 +102,10 @@ export default function DashboardPage() {
             <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold">Hiring pipeline</div>
             <div className="grid min-h-80 grid-cols-1 gap-px bg-slate-200 md:grid-cols-7">
               {stages.map((stage) => (
-                <div key={stage} className="bg-white p-3">
-                  <div className="text-sm font-medium text-slate-700">{stage}</div>
+                <div key={stage.key} className="bg-white p-3">
+                  <div className="text-sm font-medium text-slate-700">{stage.label}</div>
                   <div className="mt-3 rounded-md border border-slate-200 p-3 text-sm">
-                    <div className="font-medium">{funnelData[stage.toLowerCase()] || 0} candidates</div>
+                    <div className="font-medium">{funnelData[stage.key] || 0} candidates</div>
                     <div className="mt-1 text-xs text-slate-500">Live statuses sync from API</div>
                   </div>
                 </div>

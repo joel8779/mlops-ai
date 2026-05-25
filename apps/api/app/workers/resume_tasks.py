@@ -107,7 +107,13 @@ async def _embed_resume(db, resume: Resume, candidate: Candidate, skills: list[s
         resume.id,
         chunks,
         vectors,
-        metadata={"skills": skills, "location": candidate.location, "education": candidate.raw_profile.get("education")},
+        metadata={
+            "skills": skills,
+            "full_name": candidate.full_name,
+            "headline": candidate.headline,
+            "location": candidate.location,
+            "education": candidate.raw_profile.get("education"),
+        },
     )
     for chunk, point_id in zip(chunks, point_ids, strict=True):
         db.add(

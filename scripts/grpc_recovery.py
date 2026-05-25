@@ -76,7 +76,8 @@ def install_grpc_wheel_first() -> bool:
     packages = [
         "grpcio==1.76.0",
         "grpcio-tools==1.76.0",
-        "protobuf==4.25.1",
+        "grpcio-status==1.76.0",
+        "protobuf==6.31.1",
     ]
     
     for package in packages:
@@ -162,7 +163,7 @@ def main() -> int:
         print("\nTroubleshooting:")
         print("1. Ensure you're using Python 3.11")
         print("2. Try installing from Developer Command Prompt for VS 2022")
-        print("3. Or use: pip install grpcio==1.71.2 grpcio-tools==1.71.2 protobuf==4.25.1")
+        print("3. Or use: pip install grpcio==1.76.0 grpcio-tools==1.76.0 grpcio-status==1.76.0 protobuf==6.31.1")
         return 1
     
     # Step 4: Validate GRPC

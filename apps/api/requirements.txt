@@ -42,7 +42,8 @@ torch==2.12.0
 networkx==3.4.2
 
 # MLOps and orchestration
-mlflow==2.19.0
+# MLflow is intentionally excluded from the stable runtime because
+# mlflow-skinny 2.19.0 requires protobuf<6.
 prefect==3.1.12
 
 # Resume/document parsing and OCR
@@ -56,14 +57,18 @@ Pillow==11.0.0
 structlog==24.4.0
 prometheus-client==0.21.1
 prometheus-fastapi-instrumentator==7.0.0
-opentelemetry-api==1.29.0
-opentelemetry-sdk==1.29.0
-opentelemetry-exporter-otlp==1.29.0
-opentelemetry-instrumentation-fastapi==0.50b0
-opentelemetry-instrumentation-sqlalchemy==0.50b0
-opentelemetry-instrumentation-redis==0.50b0
-opentelemetry-instrumentation-httpx==0.50b0
-opentelemetry-instrumentation-celery==0.50b0
+opentelemetry-api==1.42.1
+opentelemetry-sdk==1.42.1
+opentelemetry-exporter-otlp==1.42.1
+opentelemetry-exporter-otlp-proto-common==1.42.1
+opentelemetry-exporter-otlp-proto-grpc==1.42.1
+opentelemetry-exporter-otlp-proto-http==1.42.1
+opentelemetry-proto==1.42.1
+opentelemetry-instrumentation-fastapi==0.63b1
+opentelemetry-instrumentation-sqlalchemy==0.63b1
+opentelemetry-instrumentation-redis==0.63b1
+opentelemetry-instrumentation-httpx==0.63b1
+opentelemetry-instrumentation-celery==0.63b1
 
 # Data science utilities
 pandas==2.2.3

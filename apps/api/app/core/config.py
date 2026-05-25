@@ -74,6 +74,9 @@ class Settings(BaseSettings):
     embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     embedding_vector_size: int = 384
     embedding_batch_size: int = 32
+    embedding_model_cache_dir: str = "runtime/model-cache/huggingface"
+    embedding_inference_timeout_seconds: int = 30
+    embedding_local_files_only: bool = False
     mlflow_tracking_uri: str = "http://localhost:5000"
     prefect_api_url: str | None = None
 
@@ -88,6 +91,11 @@ class Settings(BaseSettings):
     llm_provider: Literal["gemini", "disabled"] = "gemini"
     rate_limit_default: str = "100/minute"
     max_upload_bytes: int = 10 * 1024 * 1024
+    ocr_enabled: bool = True
+    ocr_timeout_seconds: int = 20
+    ocr_max_pages: int = 5
+    ocr_pdf_render_dpi: int = 160
+    ocr_min_text_chars: int = 24
 
     otel_enabled: bool = False
     otel_service_name: str = "resume-intelligence-api"

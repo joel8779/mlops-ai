@@ -3,6 +3,7 @@
 Provides capability detection for ML dependencies and graceful degradation.
 """
 import warnings
+import importlib.metadata as metadata
 from dataclasses import dataclass
 from typing import Optional
 
@@ -30,132 +31,28 @@ class MLCapabilities:
         """
         capabilities = {}
         
-        # sentence-transformers
-        try:
-            from sentence_transformers import SentenceTransformer
-            import sentence_transformers
-            capabilities["sentence_transformers"] = MLCapability(
-                name="sentence_transformers",
-                available=True,
-                version=getattr(sentence_transformers, "__version__", "unknown"),
-            )
-        except ImportError as e:
-            capabilities["sentence_transformers"] = MLCapability(
-                name="sentence_transformers",
-                available=False,
-                error=str(e),
-            )
-        except Exception as e:
-            capabilities["sentence_transformers"] = MLCapability(
-                name="sentence_transformers",
-                available=False,
-                error=f"Unexpected error: {e}",
-            )
-        
-        # torch
-        try:
-            import torch
-            capabilities["torch"] = MLCapability(
-                name="torch",
-                available=True,
-                version=torch.__version__,
-            )
-        except ImportError as e:
-            capabilities["torch"] = MLCapability(
-                name="torch",
-                available=False,
-                error=str(e),
-            )
-        except Exception as e:
-            capabilities["torch"] = MLCapability(
-                name="torch",
-                available=False,
-                error=f"Unexpected error: {e}",
-            )
-        
-        # transformers
-        try:
-            import transformers
-            capabilities["transformers"] = MLCapability(
-                name="transformers",
-                available=True,
-                version=getattr(transformers, "__version__", "unknown"),
-            )
-        except ImportError as e:
-            capabilities["transformers"] = MLCapability(
-                name="transformers",
-                available=False,
-                error=str(e),
-            )
-        except Exception as e:
-            capabilities["transformers"] = MLCapability(
-                name="transformers",
-                available=False,
-                error=f"Unexpected error: {e}",
-            )
-        
-        # pandas
-        try:
-            import pandas
-            capabilities["pandas"] = MLCapability(
-                name="pandas",
-                available=True,
-                version=pandas.__version__,
-            )
-        except ImportError as e:
-            capabilities["pandas"] = MLCapability(
-                name="pandas",
-                available=False,
-                error=str(e),
-            )
-        except Exception as e:
-            capabilities["pandas"] = MLCapability(
-                name="pandas",
-                available=False,
-                error=f"Unexpected error: {e}",
-            )
-        
-        # numpy
-        try:
-            import numpy
-            capabilities["numpy"] = MLCapability(
-                name="numpy",
-                available=True,
-                version=numpy.__version__,
-            )
-        except ImportError as e:
-            capabilities["numpy"] = MLCapability(
-                name="numpy",
-                available=False,
-                error=str(e),
-            )
-        except Exception as e:
-            capabilities["numpy"] = MLCapability(
-                name="numpy",
-                available=False,
-                error=f"Unexpected error: {e}",
-            )
-        
-        # scikit-learn
-        try:
-            import sklearn
-            capabilities["scikit_learn"] = MLCapability(
-                name="scikit_learn",
-                available=True,
-                version=getattr(sklearn, "__version__", "unknown"),
-            )
-        except ImportError as e:
-            capabilities["scikit_learn"] = MLCapability(
-                name="scikit_learn",
-                available=False,
-                error=str(e),
-            )
-        except Exception as e:
-            capabilities["scikit_learn"] = MLCapability(
-                name="scikit_learn",
-                available=False,
-                error=f"Unexpected error: {e}",
-            )
+        package_checks = {
+            "sentence_transformers": "sentence-transformers",
+            "torch": "torch",
+            "transformers": "transformers",
+            "pandas": "pandas",
+            "numpy": "numpy",
+            "scikit_learn": "scikit-learn",
+        }
+
+        for capability_name, package_name in package_checks.items():
+            try:
+                capabilities[capability_name] = MLCapability(
+                    name=capability_name,
+                    available=True,
+                    version=metadata.version(package_name),
+                )
+            except metadata.PackageNotFoundError as exc:
+                capabilities[capability_name] = MLCapability(
+                    name=capability_name,
+                    available=False,
+                    error=str(exc),
+                )
         
         return capabilities
     

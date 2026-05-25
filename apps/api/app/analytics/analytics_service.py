@@ -1,7 +1,16 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.domain import CandidateSkill, FeedbackAction, RankingFeedback, RecruiterActivity
+from app.models.domain import (
+    Candidate,
+    CandidatePipelineStage,
+    CandidateSkill,
+    FeedbackAction,
+    JobDescription,
+    RankingFeedback,
+    RecruiterActivity,
+    Resume,
+)
 from app.schemas.auth import AuthContext
 
 
@@ -10,20 +19,29 @@ class AnalyticsService:
         self.db = db
 
     async def executive_dashboard(self, auth: AuthContext) -> dict:
+        total_actions = await self.db.scalar(
+            select(func.count())
+            .select_from(RecruiterActivity)
+            .where(RecruiterActivity.organization_id == auth.organization_id)
+        )
         return {
             "hiring_funnel": await self.hiring_funnel(auth),
             "top_skills": await self.top_skills(auth),
             "recruiter_efficiency": await self.recruiter_efficiency(auth),
             "ranking_accuracy": await self.ranking_accuracy(auth),
+            "total_candidates": await self._count(auth, Candidate),
+            "total_jobs": await self._count(auth, JobDescription),
+            "total_actions": int(total_actions or 0),
+            "total_resumes": await self._count(auth, Resume),
         }
 
     async def hiring_funnel(self, auth: AuthContext) -> dict[str, int]:
         result = await self.db.execute(
-            select(RankingFeedback.action, func.count())
-            .where(RankingFeedback.organization_id == auth.organization_id)
-            .group_by(RankingFeedback.action)
+            select(CandidatePipelineStage.stage, func.count())
+            .where(CandidatePipelineStage.organization_id == auth.organization_id)
+            .group_by(CandidatePipelineStage.stage)
         )
-        return {action.value: count for action, count in result.all()}
+        return {stage.value.lower().replace(" ", "_"): count for stage, count in result.all()}
 
     async def top_skills(self, auth: AuthContext) -> list[dict]:
         result = await self.db.execute(
@@ -54,3 +72,9 @@ class AnalyticsService:
             select(func.count()).select_from(RankingFeedback).where(RankingFeedback.organization_id == auth.organization_id)
         )
         return {"positive_feedback_rate": round((positive or 0) / max(total or 0, 1), 4)}
+
+    async def _count(self, auth: AuthContext, model) -> int:
+        value = await self.db.scalar(
+            select(func.count()).select_from(model).where(model.organization_id == auth.organization_id)
+        )
+        return int(value or 0)

@@ -1,0 +1,16 @@
+# Optional OCR/document intelligence layer - PHASE 24.4
+# Install only on API/worker environments that need resume document parsing.
+
+# Direct PDF/DOCX text extraction
+pdfplumber==0.11.5
+pymupdf==1.25.1
+python-docx==1.1.2
+
+# Image OCR fallback
+pytesseract==0.3.13
+Pillow==11.3.0
+
+# Intentionally excluded:
+# - pdf2image: requires Poppler and is unnecessary because PyMuPDF renders pages.
+# - easyocr: pulls heavier deep-learning dependencies and is not needed for resume ingestion.
+# - GPU/CUDA packages and training frameworks.

@@ -1,0 +1,10 @@
+# Worker and local orchestration runtime - PHASE 24.3
+# Install after core, Gemini, and embeddings with:
+#   pip install -r requirements-worker.txt -c constraints.txt
+#
+# Celery/Redis are already in core; they are repeated here as an explicit
+# worker-layer contract. Prefect is optional local orchestration only.
+
+celery[redis]==5.4.0
+redis==5.2.1
+prefect==3.1.12

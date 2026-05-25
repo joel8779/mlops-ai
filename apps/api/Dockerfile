@@ -13,22 +13,20 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy layered requirements
-COPY requirements-core.txt requirements-observability.txt requirements-ai.txt requirements-ml.txt ./
+COPY requirements-core.txt requirements-observability.txt requirements-ai.txt requirements-embeddings.txt requirements-ocr.txt requirements-worker.txt ./
 COPY constraints.txt ./
 
-# Install GRPC ecosystem first (for binary compatibility)
-RUN python -m pip install --upgrade pip setuptools wheel \
-    && python -m pip install --no-cache-dir \
-       grpcio==1.60.0 \
-       grpcio-tools==1.60.0 \
-       grpcio-status==1.60.0 \
-       protobuf==4.25.1
+# Install build tooling only. Protobuf/gRPC are resolved from requirements
+# under constraints so observability cannot downgrade the stable runtime.
+RUN python -m pip install --upgrade pip setuptools wheel
 
 # Build wheels for all layers
-RUN python -m pip wheel --wheel-dir /wheels -r requirements-core.txt \
-    && python -m pip wheel --wheel-dir /wheels -r requirements-observability.txt \
-    && python -m pip wheel --wheel-dir /wheels -r requirements-ai.txt \
-    && python -m pip wheel --wheel-dir /wheels -r requirements-ml.txt
+RUN python -m pip wheel --wheel-dir /wheels -r requirements-core.txt -c constraints.txt \
+    && python -m pip wheel --wheel-dir /wheels -r requirements-observability.txt -c constraints.txt \
+    && python -m pip wheel --wheel-dir /wheels -r requirements-ai.txt -c constraints.txt \
+    && python -m pip wheel --wheel-dir /wheels -r requirements-embeddings.txt -c constraints.txt \
+    && python -m pip wheel --wheel-dir /wheels -r requirements-ocr.txt -c constraints.txt \
+    && python -m pip wheel --wheel-dir /wheels -r requirements-worker.txt -c constraints.txt
 
 
 FROM python:3.11-slim AS runtime
@@ -50,12 +48,15 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /wheels /wheels
-COPY requirements-core.txt requirements-observability.txt requirements-ai.txt requirements-ml.txt ./
+COPY requirements-core.txt requirements-observability.txt requirements-ai.txt requirements-embeddings.txt requirements-ocr.txt requirements-worker.txt ./
 COPY constraints.txt ./
-RUN python -m pip install --no-index --find-links=/wheels -r requirements-core.txt \
-    && python -m pip install --no-index --find-links=/wheels -r requirements-observability.txt \
-    && python -m pip install --no-index --find-links=/wheels -r requirements-ai.txt \
-    && python -m pip install --no-index --find-links=/wheels -r requirements-ml.txt \
+RUN python -m pip install --no-index --find-links=/wheels -r requirements-core.txt -c constraints.txt \
+    && python -m pip install --no-index --find-links=/wheels -r requirements-observability.txt -c constraints.txt \
+    && python -m pip install --no-index --find-links=/wheels -r requirements-ai.txt -c constraints.txt \
+    && python -m pip install --no-index --find-links=/wheels -r requirements-embeddings.txt -c constraints.txt \
+    && python -m pip install --no-index --find-links=/wheels -r requirements-ocr.txt -c constraints.txt \
+    && python -m pip install --no-index --find-links=/wheels -r requirements-worker.txt -c constraints.txt \
+    && python -m pip check \
     && rm -rf /wheels
 
 COPY app app

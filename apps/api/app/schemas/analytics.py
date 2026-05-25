@@ -6,3 +6,7 @@ class ExecutiveDashboardResponse(BaseModel):
     top_skills: list[dict]
     recruiter_efficiency: dict
     ranking_accuracy: dict
+    total_candidates: int = 0
+    total_jobs: int = 0
+    total_actions: int = 0
+    total_resumes: int = 0

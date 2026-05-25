@@ -102,7 +102,7 @@ def main() -> int:
         print("2. Purge pip cache:")
         print("   pip cache purge")
         print("3. Reinstall with pinned versions:")
-        print("   pip install grpcio==1.60.0 grpcio-tools==1.60.0 grpcio-status==1.60.0 protobuf==4.25.1")
+        print("   pip install grpcio==1.76.0 grpcio-tools==1.76.0 grpcio-status==1.76.0 protobuf==6.31.1")
         print("\nIf GRPC still fails on Windows:")
         print("- Install Visual C++ Build Tools from https://visualstudio.microsoft.com/downloads/")
         print("- Select 'Desktop development with C++'")

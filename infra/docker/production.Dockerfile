@@ -12,7 +12,9 @@ RUN apt-get update && apt-get install -y \
 
 # Copy requirements
 COPY apps/api/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY apps/api/constraints.txt .
+RUN pip install --no-cache-dir -r requirements.txt -c constraints.txt \
+    && pip check
 
 # Copy application
 COPY apps/api/ .

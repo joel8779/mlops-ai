@@ -1,5 +1,8 @@
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
+from pathlib import Path
 from time import perf_counter
+from typing import Any
 from uuid import UUID, uuid4
 
 from qdrant_client import QdrantClient
@@ -16,16 +19,17 @@ from app.observability.metrics import (
 )
 from app.observability.tracing import get_tracer
 
-# Graceful degradation for sentence-transformers
-try:
-    from sentence_transformers import SentenceTransformer
-    SENTENCE_TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    SENTENCE_TRANSFORMERS_AVAILABLE = False
-    SentenceTransformer = None
-
-
 tracer = get_tracer(__name__)
+REPO_ROOT = Path(__file__).resolve().parents[4]
+
+
+class EmbeddingRuntimeError(RuntimeError):
+    """Structured embedding failure that callers can degrade around."""
+
+    def __init__(self, code: str, message: str, *, details: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+        self.details = details or {}
 
 
 @dataclass(frozen=True)
@@ -35,19 +39,70 @@ class TextChunk:
 
 
 class EmbeddingService:
+    _model: Any | None = None
+    _model_error: Exception | None = None
+    _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="embedding-runtime")
+
     def __init__(self) -> None:
-        if not SENTENCE_TRANSFORMERS_AVAILABLE:
-            ml_capabilities.warn_if_unavailable(
-                "sentence_transformers",
-                "Embedding Service"
+        self.client = QdrantClient(
+            url=str(settings.qdrant_url),
+            api_key=settings.qdrant_api_key,
+            timeout=settings.qdrant_timeout_seconds,
+        )
+
+    @classmethod
+    def _cache_folder(cls) -> str:
+        cache_path = Path(settings.embedding_model_cache_dir)
+        if not cache_path.is_absolute():
+            cache_path = REPO_ROOT / cache_path
+        cache_path.mkdir(parents=True, exist_ok=True)
+        return str(cache_path)
+
+    @classmethod
+    def _load_model(cls) -> Any:
+        if cls._model is not None:
+            return cls._model
+        if cls._model_error is not None:
+            raise EmbeddingRuntimeError(
+                "embedding_model_unavailable",
+                "Embedding model is unavailable from a previous load attempt.",
+                details={"error": str(cls._model_error)},
+            ) from cls._model_error
+
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as exc:
+            ml_capabilities.warn_if_unavailable("sentence_transformers", "Embedding Service")
+            cls._model_error = exc
+            raise EmbeddingRuntimeError(
+                "embedding_dependency_missing",
+                "sentence-transformers is not installed. Install apps/api/requirements-embeddings.txt.",
+                details={"dependency": "sentence-transformers"},
+            ) from exc
+
+        try:
+            cls._model = SentenceTransformer(
+                settings.embedding_model_name,
+                device="cpu",
+                cache_folder=cls._cache_folder(),
+                local_files_only=settings.embedding_local_files_only,
             )
-            raise RuntimeError(
-                "sentence-transformers is not installed. "
-                "Install with: pip install -r requirements-ml.txt"
-            )
-        self.model = SentenceTransformer(settings.embedding_model_name)
-        self.client = QdrantClient(url=str(settings.qdrant_url))
-        self.ensure_collection()
+            return cls._model
+        except Exception as exc:
+            cls._model_error = exc
+            raise EmbeddingRuntimeError(
+                "embedding_model_load_failed",
+                "Embedding model failed to load.",
+                details={"model": settings.embedding_model_name, "error": str(exc)},
+            ) from exc
+
+    @classmethod
+    def model_available(cls) -> bool:
+        try:
+            cls._load_model()
+            return True
+        except EmbeddingRuntimeError:
+            return False
 
     def ensure_collection(self) -> None:
         existing = [collection.name for collection in self.client.get_collections().collections]
@@ -77,7 +132,15 @@ class EmbeddingService:
             with tracer.start_as_current_span("embedding.generate") as span:
                 span.set_attribute("embedding.model", settings.embedding_model_name)
                 span.set_attribute("embedding.chunk_count", len(chunks))
-                vectors = self.model.encode([chunk.text for chunk in chunks], normalize_embeddings=True)
+                model = self._load_model()
+                future = self._executor.submit(
+                    model.encode,
+                    [chunk.text for chunk in chunks],
+                    batch_size=settings.embedding_batch_size,
+                    normalize_embeddings=True,
+                    show_progress_bar=False,
+                )
+                vectors = future.result(timeout=settings.embedding_inference_timeout_seconds)
             duration_ms = elapsed_ms(start_time)
             EMBEDDING_LATENCY.labels(settings.embedding_model_name).observe(duration_ms / 1000)
             EMBEDDING_GENERATION_DURATION_MS.labels(settings.embedding_model_name, "success").observe(duration_ms)
@@ -87,6 +150,19 @@ class EmbeddingService:
                 "success",
             ).observe(duration_ms)
             return [vector.tolist() for vector in vectors]
+        except FuturesTimeoutError as exc:
+            duration_ms = elapsed_ms(start_time)
+            EMBEDDING_GENERATION_DURATION_MS.labels(settings.embedding_model_name, "timeout").observe(duration_ms)
+            ML_INFERENCE_FAILURES_TOTAL.labels(
+                settings.embedding_model_name,
+                "embedding_generation",
+                "timeout",
+            ).inc()
+            raise EmbeddingRuntimeError(
+                "embedding_timeout",
+                "Embedding generation timed out.",
+                details={"timeout_seconds": settings.embedding_inference_timeout_seconds},
+            ) from exc
         except Exception as exc:
             duration_ms = elapsed_ms(start_time)
             EMBEDDING_GENERATION_DURATION_MS.labels(settings.embedding_model_name, "error").observe(duration_ms)
@@ -100,7 +176,13 @@ class EmbeddingService:
                 "embedding_generation",
                 type(exc).__name__,
             ).inc()
-            raise
+            if isinstance(exc, EmbeddingRuntimeError):
+                raise
+            raise EmbeddingRuntimeError(
+                "embedding_generation_failed",
+                "Embedding generation failed.",
+                details={"error": str(exc)},
+            ) from exc
 
     def upsert_candidate_resume(
         self,
@@ -130,6 +212,7 @@ class EmbeddingService:
             for point_id, chunk, vector in zip(point_ids, chunks, vectors, strict=True)
         ]
         if points:
+            self.ensure_collection()
             self.client.upsert(collection_name=settings.qdrant_collection, points=points)
         return point_ids
 
@@ -156,12 +239,13 @@ class EmbeddingService:
             for point_id, chunk, vector in zip(point_ids, chunks, vectors, strict=True)
         ]
         if points:
+            self.ensure_collection()
             self.client.upsert(collection_name=settings.qdrant_job_collection, points=points)
         return point_ids
 
     def semantic_search(self, organization_id: UUID, query: str, limit: int = 10) -> list[dict]:
         start_time = perf_counter()
-        vector = self.model.encode(query, normalize_embeddings=True).tolist()
+        vector = self.embed([TextChunk(index=0, text=query)])[0]
         EMBEDDING_GENERATION_DURATION_MS.labels(settings.embedding_model_name, "success").observe(
             elapsed_ms(start_time)
         )
@@ -183,7 +267,7 @@ class EmbeddingService:
         skills: list[str] | None = None,
     ) -> list[dict]:
         start_time = perf_counter()
-        vector = self.model.encode(query, normalize_embeddings=True).tolist()
+        vector = self.embed([TextChunk(index=0, text=query)])[0]
         EMBEDDING_GENERATION_DURATION_MS.labels(settings.embedding_model_name, "success").observe(
             elapsed_ms(start_time)
         )

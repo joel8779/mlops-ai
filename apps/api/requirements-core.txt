@@ -29,8 +29,8 @@ prometheus-client==0.21.1
 
 # Structured logging imported during application startup
 structlog==24.4.0
-opentelemetry-api==1.29.0
-opentelemetry-sdk==1.29.0
+opentelemetry-api==1.42.1
+opentelemetry-sdk==1.42.1
 
 # Authentication and security
 python-jose[cryptography]==3.3.0

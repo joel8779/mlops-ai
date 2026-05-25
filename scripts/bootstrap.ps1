@@ -54,7 +54,7 @@ if ($ProjectPython.Length -gt 1) {
 $VenvArgs += @("-m", "venv", ".venv")
 Invoke-Checked $ProjectPython[0] @VenvArgs
 Invoke-Checked ".\.venv\Scripts\python.exe" -m pip install --upgrade pip setuptools wheel
-Invoke-Checked ".\.venv\Scripts\python.exe" -m pip install -r apps/api/requirements-dev.txt
+Invoke-Checked ".\.venv\Scripts\python.exe" -m pip install -r apps/api/requirements-dev.txt -c apps/api/constraints.txt
 
 if (Test-Path "apps\web\package.json") {
     Push-Location "apps\web"

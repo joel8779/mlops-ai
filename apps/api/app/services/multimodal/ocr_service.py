@@ -6,8 +6,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-import pytesseract
-from PIL import Image
+from app.core.config import settings
+from app.core.ocr_capabilities import check_binary
 
 
 class OCRLanguage(str, Enum):
@@ -62,13 +62,19 @@ class OCRService:
         Returns:
             OCRResult with extracted text and metadata
         """
+        self._ensure_ocr_available()
+        import pytesseract
+        from PIL import Image
+
         language = language or self.default_language
 
         # Open image
         image = Image.open(io.BytesIO(image_data))
 
         # Perform OCR
-        text = pytesseract.image_to_string(image, lang=language.value)
+        text = pytesseract.image_to_string(
+            image, lang=language.value, timeout=settings.ocr_timeout_seconds
+        )
 
         # Get confidence data
         data = pytesseract.image_to_data(image, lang=language.value, output_type=pytesseract.Output.DICT)
@@ -101,7 +107,10 @@ class OCRService:
         Returns:
             OCRResult with extracted text and metadata
         """
+        self._ensure_ocr_available()
         import fitz  # PyMuPDF
+        import pytesseract
+        from PIL import Image
 
         language = language or self.default_language
         doc = fitz.open(pdf_path)
@@ -110,7 +119,7 @@ class OCRService:
         total_confidence = 0.0
         page_count = 0
 
-        for page in doc:
+        for page in list(doc)[: settings.ocr_max_pages]:
             # Try to extract text directly first
             text = page.get_text()
             if text.strip():
@@ -121,7 +130,9 @@ class OCRService:
                 pix = page.get_pixmap()
                 img_data = pix.tobytes("png")
                 image = Image.open(io.BytesIO(img_data))
-                page_text = pytesseract.image_to_string(image, lang=language.value)
+                page_text = pytesseract.image_to_string(
+                    image, lang=language.value, timeout=settings.ocr_timeout_seconds
+                )
                 all_text.append(page_text)
 
                 # Get confidence
@@ -159,6 +170,10 @@ class OCRService:
         Returns:
             Dictionary with structured data
         """
+        self._ensure_ocr_available()
+        import pytesseract
+        from PIL import Image
+
         language = language or self.default_language
         image = Image.open(io.BytesIO(image_data))
 
@@ -186,6 +201,12 @@ class OCRService:
             "total_lines": len(lines),
             "language": language.value,
         }
+
+    def _ensure_ocr_available(self) -> None:
+        if not settings.ocr_enabled:
+            raise RuntimeError("OCR is disabled")
+        if not check_binary("tesseract").available:
+            raise RuntimeError("Tesseract OCR binary is unavailable")
 
     def detect_language_from_text(self, text: str) -> OCRLanguage:
         """Detect likely language from text sample.

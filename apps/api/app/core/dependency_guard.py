@@ -26,6 +26,23 @@ CORE_RUNTIME_REQUIREMENTS = {
     "grpcio-status": ">=1.76.0,<2.0.0",
 }
 
+EMBEDDING_RUNTIME_REQUIREMENTS = {
+    "sentence-transformers": ">=3.3.1,<3.4.0",
+    "transformers": ">=4.53.0,<4.54.0",
+    "torch": ">=2.5.1,<2.6.0",
+    "tokenizers": ">=0.21.2,<0.22.0",
+    "safetensors": ">=0.5.3,<0.6.0",
+}
+
+WORKER_RUNTIME_REQUIREMENTS = {
+    "celery": ">=5.4.0,<5.5.0",
+    "redis": ">=5.2.1,<6.0.0",
+    "kombu": ">=5.3.4,<6.0.0",
+    "billiard": ">=4.2.0,<5.0.0",
+    "vine": ">=5.1.0,<6.0.0",
+    "prefect": ">=3.1.12,<3.2.0",
+}
+
 
 def _satisfies(installed: str, requirement: str) -> bool:
     """Evaluate the small requirement subset used by this guard."""
@@ -133,5 +150,99 @@ def validate_gemini_dependency_layer() -> list[DependencyAssertion]:
     failures = [result.message for result in results if not result.ok]
     if failures:
         raise RuntimeError("Gemini dependency layer is incompatible: " + "; ".join(failures))
+
+    return results
+
+
+def validate_embedding_dependency_layer() -> list[DependencyAssertion]:
+    """Validate optional CPU embedding packages without importing torch."""
+    results = assert_core_dependency_runtime()
+    failures: list[str] = []
+
+    for package_name, requirement in EMBEDDING_RUNTIME_REQUIREMENTS.items():
+        try:
+            installed = metadata.version(package_name)
+        except metadata.PackageNotFoundError:
+            result = DependencyAssertion(
+                name=package_name,
+                installed_version=None,
+                requirement=requirement,
+                ok=False,
+                message=f"{package_name} is not installed",
+            )
+            results.append(result)
+            failures.append(result.message)
+            continue
+
+        ok = _satisfies(installed, requirement)
+        cpu_ok = True
+        if package_name == "torch":
+            cpu_ok = "+cpu" in installed
+            ok = ok and cpu_ok
+        result = DependencyAssertion(
+            name=package_name,
+            installed_version=installed,
+            requirement=requirement if package_name != "torch" else f"{requirement}, local version +cpu",
+            ok=ok,
+            message=(
+                f"{package_name}=={installed} satisfies {requirement}"
+                if ok
+                else f"{package_name}=={installed} violates {requirement}"
+            ),
+        )
+        results.append(result)
+        if not ok:
+            failures.append(result.message)
+
+    if failures:
+        raise RuntimeError("Embedding dependency layer is incompatible: " + "; ".join(failures))
+
+    return results
+
+
+def validate_worker_dependency_layer() -> list[DependencyAssertion]:
+    """Validate Celery/Redis/Prefect packages without importing worker modules."""
+    results = assert_core_dependency_runtime()
+    failures: list[str] = []
+
+    for package_name, requirement in WORKER_RUNTIME_REQUIREMENTS.items():
+        try:
+            installed = metadata.version(package_name)
+        except metadata.PackageNotFoundError:
+            ok = package_name == "prefect"
+            result = DependencyAssertion(
+                name=package_name,
+                installed_version=None,
+                requirement=requirement if not ok else f"{requirement}; optional local orchestration",
+                ok=ok,
+                message=(
+                    f"{package_name} is optional and not installed"
+                    if ok
+                    else f"{package_name} is not installed"
+                ),
+            )
+            results.append(result)
+            if not ok:
+                failures.append(result.message)
+            continue
+
+        ok = _satisfies(installed, requirement)
+        result = DependencyAssertion(
+            name=package_name,
+            installed_version=installed,
+            requirement=requirement,
+            ok=ok,
+            message=(
+                f"{package_name}=={installed} satisfies {requirement}"
+                if ok
+                else f"{package_name}=={installed} violates {requirement}"
+            ),
+        )
+        results.append(result)
+        if not ok:
+            failures.append(result.message)
+
+    if failures:
+        raise RuntimeError("Worker dependency layer is incompatible: " + "; ".join(failures))
 
     return results

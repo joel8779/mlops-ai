@@ -50,7 +50,7 @@ echo "  ✓ pip upgraded"
 # Step 5: Install core dependencies
 echo ""
 echo "Step 5: Installing core dependencies..."
-pip install -r apps/api/requirements-core.txt
+pip install -r apps/api/requirements-core.txt -c apps/api/constraints.txt
 echo "  ✓ Core dependencies installed"
 
 # Step 6: Validate Python runtime

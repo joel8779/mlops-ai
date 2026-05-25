@@ -61,7 +61,7 @@ echo "  ✓ pip, setuptools, wheel upgraded"
 # Step 7: Install GRPC ecosystem first (for Windows compatibility)
 echo ""
 echo "Step 7: Installing GRPC ecosystem..."
-pip install --no-cache-dir grpcio==1.60.0 grpcio-tools==1.60.0 grpcio-status==1.60.0 protobuf==4.25.1
+pip install --no-cache-dir grpcio==1.76.0 grpcio-tools==1.76.0 grpcio-status==1.76.0 protobuf==6.31.1
 echo "  ✓ GRPC ecosystem installed"
 
 # Step 8: Validate GRPC installation
@@ -72,7 +72,7 @@ python scripts/validate_grpc.py
 # Step 9: Install core dependencies
 echo ""
 echo "Step 9: Installing core dependencies..."
-pip install --no-cache-dir -r apps/api/requirements-core.txt
+pip install --no-cache-dir -r apps/api/requirements-core.txt -c apps/api/constraints.txt
 echo "  ✓ Core dependencies installed"
 
 # Step 10: Validate compiled packages

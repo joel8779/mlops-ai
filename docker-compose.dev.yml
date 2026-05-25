@@ -101,7 +101,7 @@ services:
     networks: [resume_net]
 
   minio:
-    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    image: minio/minio:latest
     container_name: resume-dev-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
@@ -122,7 +122,7 @@ services:
     networks: [resume_net]
 
   minio-init:
-    image: minio/mc:RELEASE.2024-12-18T13-24-41Z
+    image: minio/minio:latest
     container_name: resume-dev-minio-init
     depends_on:
       minio:

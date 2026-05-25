@@ -205,7 +205,11 @@ class CandidatePipelineStage(TimestampedUUIDModel):
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
     candidate_id: Mapped[UUID] = mapped_column(ForeignKey("candidates.id"), index=True)
     job_description_id: Mapped[UUID | None] = mapped_column(ForeignKey("job_descriptions.id"), index=True)
-    stage: Mapped[PipelineStage] = mapped_column(Enum(PipelineStage), default=PipelineStage.applied, index=True)
+    stage: Mapped[PipelineStage] = mapped_column(
+        Enum(PipelineStage, values_callable=lambda values: [item.value for item in values]),
+        default=PipelineStage.applied,
+        index=True,
+    )
     position: Mapped[int] = mapped_column(Integer, default=0)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 

@@ -24,7 +24,7 @@ PROJECT_PYTHON="$(resolve_python)"
 "$PROJECT_PYTHON" -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip setuptools wheel
-python -m pip install -r apps/api/requirements-dev.txt
+python -m pip install -r apps/api/requirements-dev.txt -c apps/api/constraints.txt
 
 if [ -f "apps/web/package.json" ]; then
   (cd apps/web && npm install)
