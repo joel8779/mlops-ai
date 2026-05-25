@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { DragEvent, useCallback, useEffect, useState } from "react";
-import { AlertCircle, CheckCircle, Cpu, Database, FileText, Loader2, RefreshCcw, ScanLine, Search, UploadCloud, Users, Zap } from "lucide-react";
+import { AlertCircle, CheckCircle, Cpu, Database, FileText, Loader2, RefreshCcw, ScanLine, Search, Trash2, UploadCloud, Users, Zap } from "lucide-react";
 import AppShell from "@/components/app-shell";
 import { API_BASE_URL, getAccessToken, resumesApi } from "@/lib/api";
 
@@ -131,6 +131,16 @@ export default function DocumentsPage() {
     } catch (err: any) {
       setError(err.message || "Upload failed");
       setState("error");
+    }
+  };
+
+  const deleteDocument = async (resumeId: string) => {
+    setError("");
+    try {
+      await resumesApi.delete(resumeId);
+      await loadDocuments();
+    } catch (err: any) {
+      setError(err.message || "Unable to delete document");
     }
   };
 
@@ -294,6 +304,13 @@ export default function DocumentsPage() {
                     )}
                     <button onClick={() => pollResume(document.id)} className="rounded-md border border-white/10 px-3 py-2 text-sm hover:bg-white/[0.04]">
                       Check status
+                    </button>
+                    <button
+                      title="Delete document"
+                      onClick={() => deleteDocument(document.id)}
+                      className="rounded-md border border-error/30 px-3 py-2 text-sm text-error hover:bg-error/10"
+                    >
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 </div>

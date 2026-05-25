@@ -24,9 +24,36 @@ class JobDescriptionRead(BaseModel):
     required_skills: list[str]
     optional_skills: list[str]
     keywords: list[str]
+    metadata_json: dict
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class JobCandidateRankingItem(BaseModel):
+    candidate_id: UUID
+    full_name: str | None
+    email: str | None
+    headline: str | None
+    location: str | None
+    latest_resume_id: UUID | None
+    ats_score: float | None = None
+    overall_score: float
+    semantic_score: float
+    skill_match: float
+    experience_match: float
+    education_match: float
+    keyword_score: float
+    matched_skills: list[str]
+    missing_skills: list[str]
+    explanation: str
+    current_stage: str | None = None
+
+
+class JobIntelligenceRead(BaseModel):
+    job: JobDescriptionRead
+    ranked_candidates: list[JobCandidateRankingItem]
+    semantic_insights: dict
 
 
 class JobParseResult(BaseModel):
@@ -36,3 +63,18 @@ class JobParseResult(BaseModel):
     education_requirements: list[str]
     keywords: list[str]
     role_category: str | None
+
+
+class JobExtractionPreview(BaseModel):
+    title: str
+    description: str
+    role_category: str | None
+    years_experience_min: int | None
+    years_experience_max: int | None
+    education_requirements: list[str]
+    required_skills: list[str]
+    optional_skills: list[str]
+    keywords: list[str]
+    semantic_requirements: list[str]
+    extraction_metadata: dict
+    warnings: list[str] = Field(default_factory=list)

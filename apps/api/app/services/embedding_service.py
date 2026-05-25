@@ -6,7 +6,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from qdrant_client import QdrantClient
-from qdrant_client.http.models import Distance, FieldCondition, Filter, MatchAny, MatchValue, PointStruct, VectorParams
+from qdrant_client.http.models import Distance, FieldCondition, Filter, MatchAny, MatchValue, PointIdsList, PointStruct, VectorParams
 
 from app.core.config import settings
 from app.core.ml_capabilities import ml_capabilities
@@ -282,3 +282,17 @@ class EmbeddingService:
             limit=limit,
         )
         return [{"score": float(hit.score), "payload": hit.payload or {}} for hit in results]
+
+    def delete_candidate_points(self, point_ids: list[str]) -> None:
+        if point_ids:
+            self.client.delete(
+                collection_name=settings.qdrant_collection,
+                points_selector=PointIdsList(points=point_ids),
+            )
+
+    def delete_job_points(self, point_ids: list[str]) -> None:
+        if point_ids:
+            self.client.delete(
+                collection_name=settings.qdrant_job_collection,
+                points_selector=PointIdsList(points=point_ids),
+            )

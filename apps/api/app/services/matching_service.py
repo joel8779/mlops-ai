@@ -2,11 +2,11 @@ from dataclasses import dataclass
 from math import exp
 from uuid import UUID
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models.domain import Candidate, CandidateMatch, JobDescription, Resume
+from app.models.domain import Candidate, CandidateMatch, CandidatePipelineStage, JobDescription, PipelineStage, Resume
 from app.repositories.candidates import CandidateRepository
 from app.schemas.matching import CandidateMatchRead, MatchingWeights
 from app.services.embedding_service import EmbeddingService
@@ -42,7 +42,10 @@ class MatchingService:
             education=settings.match_education_weight,
             keyword=settings.match_keyword_weight,
         )
-        semantic_hits = EmbeddingService().semantic_search(organization_id, job.description, limit=limit * 3)
+        try:
+            semantic_hits = EmbeddingService().semantic_search(organization_id, job.description, limit=limit * 3)
+        except Exception:
+            semantic_hits = []
         semantic_by_candidate = {
             UUID(hit["payload"]["candidate_id"]): min(100.0, max(0.0, hit["score"] * 100))
             for hit in semantic_hits
@@ -57,7 +60,8 @@ class MatchingService:
                 candidate=candidate,
                 resume=resume,
                 skills=skills,
-                semantic_score=semantic_by_candidate.get(candidate.id, 0.0),
+                semantic_score=semantic_by_candidate.get(candidate.id, 0.0)
+                or self._semantic_fallback_score(job, resume, skills),
             )
             scored.append(self.score(job, evidence, weights, recruiter_preferences or {}))
         scored.sort(key=lambda item: item.overall_score, reverse=True)
@@ -109,7 +113,7 @@ class MatchingService:
                 CandidateMatch.job_description_id == job_id,
             )
         )
-        for match in matches:
+        for position, match in enumerate(matches):
             self.db.add(
                 CandidateMatch(
                     organization_id=organization_id,
@@ -127,6 +131,32 @@ class MatchingService:
                     scoring_version=self.scoring_version,
                 )
             )
+            current_stage = await self.db.scalar(
+                select(CandidatePipelineStage).where(
+                    CandidatePipelineStage.organization_id == organization_id,
+                    CandidatePipelineStage.candidate_id == match.candidate_id,
+                    CandidatePipelineStage.job_description_id == job_id,
+                    CandidatePipelineStage.deleted_at.is_(None),
+                )
+            )
+            if current_stage is None:
+                self.db.add(
+                    CandidatePipelineStage(
+                        organization_id=organization_id,
+                        candidate_id=match.candidate_id,
+                        job_description_id=job_id,
+                        stage=PipelineStage.ranked,
+                        position=position,
+                        metadata_json={"source": "matching.rank_candidates"},
+                    )
+                )
+            elif current_stage.stage in {PipelineStage.uploaded, PipelineStage.ranked}:
+                current_stage.stage = PipelineStage.ranked
+                current_stage.position = position
+                current_stage.metadata_json = {
+                    **(current_stage.metadata_json or {}),
+                    "source": "matching.rank_candidates",
+                }
         await self.db.commit()
 
     @staticmethod
@@ -162,6 +192,19 @@ class MatchingService:
         if location and evidence.candidate.location and location.lower() in evidence.candidate.location.lower():
             return 3.0
         return 0.0
+
+    @staticmethod
+    def _semantic_fallback_score(job: JobDescription, resume: Resume | None, skills: list[str]) -> float:
+        if resume is None or not resume.extracted_text:
+            return 0.0
+        text = resume.extracted_text.lower()
+        job_terms = {term.lower() for term in [*(job.required_skills or []), *(job.optional_skills or []), *(job.keywords or [])]}
+        skill_hits = {skill.lower() for skill in skills if skill.lower() in job_terms}
+        keyword_hits = {term for term in list(job_terms)[:40] if term and term in text}
+        if not job_terms:
+            return 35.0
+        coverage = (len(skill_hits) * 1.5 + len(keyword_hits)) / max(len(job_terms), 1)
+        return round(min(75.0, coverage * 100), 2)
 
     @staticmethod
     def _explain(job: JobDescription, matched: list[str], missing: list[str], score: float) -> str:

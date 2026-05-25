@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { BriefcaseBusiness, Loader2, Plus, RefreshCcw } from "lucide-react";
+import { ArrowUpRight, BriefcaseBusiness, Loader2, Plus, RefreshCcw, Trash2, UploadCloud } from "lucide-react";
 import AppShell from "@/components/app-shell";
 import { jobsApi, workspaceApi } from "@/lib/api";
 
@@ -10,6 +11,8 @@ export default function JobsPage() {
   const [workspace, setWorkspace] = useState<any>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [jobFile, setJobFile] = useState<File | null>(null);
+  const [extraction, setExtraction] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -48,6 +51,49 @@ export default function JobsPage() {
     }
   };
 
+  const uploadJob = async () => {
+    if (!jobFile) return;
+    setSaving(true);
+    setError("");
+    try {
+      await jobsApi.upload(title, jobFile);
+      setTitle("");
+      setJobFile(null);
+      setExtraction(null);
+      await loadJobs();
+    } catch (err: any) {
+      setError(err.message || "Unable to upload job description");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const extractJob = async () => {
+    if (!jobFile) return;
+    setSaving(true);
+    setError("");
+    try {
+      const preview = (await jobsApi.extract(jobFile, title || undefined)) as any;
+      setExtraction(preview);
+      setTitle(preview.title || "");
+      setDescription(preview.description || "");
+    } catch (err: any) {
+      setError(err.message || "Unable to extract job description");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteJob = async (jobId: string) => {
+    setError("");
+    try {
+      await jobsApi.delete(jobId);
+      await loadJobs();
+    } catch (err: any) {
+      setError(err.message || "Unable to delete job");
+    }
+  };
+
   return (
     <AppShell>
       <div className="space-y-6">
@@ -81,10 +127,22 @@ export default function JobsPage() {
                   <div key={job.id} className="py-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="font-medium">{job.title}</div>
+                        <Link href={`/jobs/${job.id}`} className="font-medium hover:text-accent">{job.title}</Link>
                         <div className="mt-1 text-xs text-foreground-muted">{job.status}</div>
                       </div>
-                      <BriefcaseBusiness className="h-5 w-5 text-foreground-muted" />
+                      <div className="flex items-center gap-2">
+                        <BriefcaseBusiness className="h-5 w-5 text-foreground-muted" />
+                        <button
+                          title="Delete job"
+                          onClick={() => deleteJob(job.id)}
+                          className="rounded-md border border-error/30 p-2 text-error hover:bg-error/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                        <Link href={`/jobs/${job.id}`} className="rounded-md border border-white/10 p-2 hover:bg-white/[0.04]">
+                          <ArrowUpRight className="h-4 w-4" />
+                        </Link>
+                      </div>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {(job.required_skills || []).slice(0, 8).map((skill: string) => (
@@ -137,6 +195,40 @@ export default function JobsPage() {
               placeholder="Paste job description"
               required
             />
+            <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+              <input
+                type="file"
+                accept=".pdf,.docx"
+                onChange={(event) => {
+                  setJobFile(event.target.files?.[0] || null);
+                  setExtraction(null);
+                }}
+                className="block w-full text-sm text-foreground-muted file:mr-3 file:rounded-md file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-foreground"
+              />
+              {extraction && (
+                <div className="mt-3 rounded-md border border-accent/20 bg-accent/10 p-3 text-sm text-foreground-muted">
+                  Extracted {extraction.required_skills?.length || 0} required skills and {extraction.semantic_requirements?.length || 0} semantic requirements.
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={extractJob}
+                disabled={saving || !jobFile}
+                className="ops-button-secondary mt-3 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm disabled:opacity-60"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                Extract JD
+              </button>
+              <button
+                type="button"
+                onClick={uploadJob}
+                disabled={saving || !jobFile}
+                className="ops-button mt-3 ml-2 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-60"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                Create from JD
+              </button>
+            </div>
             <button disabled={saving} className="ops-button mt-4 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-60">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               Parse and index

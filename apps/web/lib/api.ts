@@ -161,11 +161,41 @@ export const jobsApi = {
     return apiFetch(`/jobs/${id}`);
   },
 
+  async intelligence(id: string) {
+    return apiFetch(`/jobs/${id}/intelligence`);
+  },
+
   async create(data: any) {
     return apiFetch("/jobs", {
       method: "POST",
       body: JSON.stringify(data),
     });
+  },
+
+  async upload(title: string, file: File) {
+    const formData = new FormData();
+    if (title) formData.append("title", title);
+    formData.append("file", file);
+    return apiFetch("/jobs/upload", {
+      method: "POST",
+      headers: {},
+      body: formData as any,
+    });
+  },
+
+  async extract(file: File, title?: string) {
+    const formData = new FormData();
+    if (title) formData.append("title", title);
+    formData.append("file", file);
+    return apiFetch("/jobs/extract", {
+      method: "POST",
+      headers: {},
+      body: formData as any,
+    });
+  },
+
+  async delete(id: string) {
+    return apiFetch(`/jobs/${id}`, { method: "DELETE" });
   },
 };
 
@@ -188,6 +218,10 @@ export const resumesApi = {
   async get(id: string) {
     return apiFetch(`/resumes/${id}`);
   },
+
+  async delete(id: string) {
+    return apiFetch(`/resumes/${id}`, { method: "DELETE" });
+  },
 };
 
 // Candidates API
@@ -199,11 +233,15 @@ export const candidatesApi = {
   async get(id: string) {
     return apiFetch(`/candidates/${id}`);
   },
+
+  async delete(id: string) {
+    return apiFetch(`/candidates/${id}`, { method: "DELETE" });
+  },
 };
 
 // Search API
 export const searchApi = {
-  async candidates(data: { query: string; limit?: number; offset?: number; skills?: string[]; location?: string }) {
+  async candidates(data: { query: string; job_description_id?: string; limit?: number; offset?: number; skills?: string[]; location?: string }) {
     return apiFetch("/search/candidates", {
       method: "POST",
       body: JSON.stringify(data),
@@ -247,8 +285,8 @@ export const matchingApi = {
 
 // ATS API
 export const atsApi = {
-  async scoreResume(resumeId: string) {
-    return apiFetch(`/ats/resumes/${resumeId}/score`, {
+  async scoreCandidateForJob(jobId: string, candidateId: string) {
+    return apiFetch(`/ats/jobs/${jobId}/candidates/${candidateId}/score`, {
       method: "POST",
     });
   },

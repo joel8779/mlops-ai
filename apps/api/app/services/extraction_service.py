@@ -33,19 +33,19 @@ class ExtractionService:
         raise ResumeParseError(f"Unsupported content type: {content_type}")
 
     def _parse_pdf(self, payload: bytes) -> ParsedResume:
-        text, page_count, method = self._extract_pdf_direct(payload)
+        text, page_count, method, metadata = self._extract_pdf_direct(payload)
         if len(text) >= settings.ocr_min_text_chars:
             return ParsedResume(
                 text=text,
                 parser_version=self.parser_version,
-                metadata={"page_count": page_count, "method": method},
+                metadata={"page_count": page_count, "method": method, **metadata},
             )
 
         if not settings.ocr_enabled:
             return ParsedResume(
                 text=text,
                 parser_version=self.parser_version,
-                metadata={"page_count": page_count, "method": method, "ocr_skipped": "disabled"},
+                metadata={"page_count": page_count, "method": method, "ocr_skipped": "disabled", **metadata},
             )
 
         ocr_text, ocr_pages = self._ocr_pdf_pages(payload)
@@ -57,6 +57,7 @@ class ExtractionService:
                 "page_count": page_count,
                 "ocr_pages": ocr_pages,
                 "method": "direct+ocr" if text else "ocr",
+                **metadata,
             },
         )
 
@@ -97,7 +98,7 @@ class ExtractionService:
             metadata={"width": image.width, "height": image.height, "method": "ocr"},
         )
 
-    def _extract_pdf_direct(self, payload: bytes) -> tuple[str, int, str]:
+    def _extract_pdf_direct(self, payload: bytes) -> tuple[str, int, str, dict[str, str]]:
         try:
             import pdfplumber
 
@@ -108,7 +109,12 @@ class ExtractionService:
                         f"PDF has {page_count} pages; limit is {settings.ocr_max_pages}"
                     )
                 pages = [page.extract_text() or "" for page in pdf.pages]
-            return normalize_text("\n".join(pages)), page_count, "pdfplumber"
+                metadata = {
+                    key: str(value)
+                    for key, value in (pdf.metadata or {}).items()
+                    if key.lower() in {"title", "author", "subject"} and value
+                }
+            return normalize_text("\n".join(pages)), page_count, "pdfplumber", metadata
         except ResumeParseError:
             raise
         except Exception:
@@ -127,7 +133,12 @@ class ExtractionService:
                     raise ResumeParseError(
                         f"PDF has {page_count} pages; limit is {settings.ocr_max_pages}"
                     )
-                return normalize_text("\n".join(page.get_text() for page in document)), page_count, "pymupdf"
+                metadata = {
+                    key: str(value)
+                    for key, value in (document.metadata or {}).items()
+                    if key.lower() in {"title", "author", "subject"} and value
+                }
+                return normalize_text("\n".join(page.get_text() for page in document)), page_count, "pymupdf", metadata
             finally:
                 document.close()
         except ResumeParseError:

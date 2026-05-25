@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.logging import get_logger
 from app.db.session import AsyncSessionLocal
 from app.models.domain import Candidate, CandidateEmbedding, CandidateSkill, Resume, ResumeProcessingEvent, ResumeStatus
+from app.services.candidate_identity import CandidateIdentityExtractor
 from app.services.job_intelligence_service import SKILL_TERMS
 from app.services.embedding_service import EmbeddingService
 from app.services.storage import ObjectStorage
@@ -54,6 +55,16 @@ async def _parse_resume(resume_id: UUID) -> None:
             resume.metadata_json = {**resume.metadata_json, "parse": parsed.metadata}
 
             candidate = await _ensure_candidate(db, resume)
+            identity = CandidateIdentityExtractor().extract(parsed.text, resume.original_filename, parsed.metadata)
+            if identity.source != "fallback" or not candidate.full_name:
+                candidate.full_name = identity.full_name
+            candidate.email = candidate.email or identity.email
+            candidate.phone = candidate.phone or identity.phone
+            candidate.raw_profile = {
+                **(candidate.raw_profile or {}),
+                "identity_source": identity.source,
+                "resume_id": str(resume.id),
+            }
             skills = await _extract_candidate_skills(db, resume, candidate)
             await _embed_resume(db, resume, candidate, skills)
             resume.status = ResumeStatus.embedded

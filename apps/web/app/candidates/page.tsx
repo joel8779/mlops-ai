@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowUpRight, Bookmark, Loader2, RefreshCcw, UploadCloud, User } from "lucide-react";
+import { ArrowUpRight, Bookmark, Loader2, RefreshCcw, Trash2, UploadCloud, User } from "lucide-react";
 import AppShell from "@/components/app-shell";
-import { candidatesApi, feedbackApi } from "@/lib/api";
+import { candidatesApi, feedbackApi, jobsApi } from "@/lib/api";
 
 export default function CandidatesPage() {
   const [candidates, setCandidates] = useState<any[]>([]);
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState("");
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -16,7 +18,12 @@ export default function CandidatesPage() {
     setLoading(true);
     setError("");
     try {
-      setCandidates((await candidatesApi.list()) as any[]);
+      if (selectedJobId) {
+        const intelligence = (await jobsApi.intelligence(selectedJobId)) as any;
+        setCandidates(intelligence.ranked_candidates || []);
+      } else {
+        setCandidates((await candidatesApi.list()) as any[]);
+      }
     } catch (err: any) {
       setError(err.message || "Unable to load candidates");
     } finally {
@@ -26,14 +33,36 @@ export default function CandidatesPage() {
 
   useEffect(() => {
     loadCandidates();
+  }, [selectedJobId]);
+
+  useEffect(() => {
+    jobsApi.list().then((items: any) => setJobs(items as any[])).catch(() => setJobs([]));
   }, []);
 
   const saveFeedback = async (candidateId: string, action: string) => {
+    if (!selectedJobId) {
+      setError("Select a job context before changing a candidate workflow state.");
+      return;
+    }
     setSavingId(candidateId);
     try {
-      await feedbackApi.ranking({ candidate_id: candidateId, action });
+      await feedbackApi.ranking({ candidate_id: candidateId, job_description_id: selectedJobId, action });
+      await loadCandidates();
     } catch (err: any) {
       setError(err.message || "Unable to save feedback");
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const deleteCandidate = async (candidateId: string) => {
+    setSavingId(candidateId);
+    setError("");
+    try {
+      await candidatesApi.delete(candidateId);
+      await loadCandidates();
+    } catch (err: any) {
+      setError(err.message || "Unable to delete candidate");
     } finally {
       setSavingId(null);
     }
@@ -52,6 +81,16 @@ export default function CandidatesPage() {
             <RefreshCcw className="h-4 w-4" />
             Refresh
           </button>
+        </div>
+        <div className="ops-panel rounded-xl p-4">
+          <label className="text-xs uppercase tracking-[0.18em] text-foreground-subtle">Job context</label>
+          <select value={selectedJobId} onChange={(event) => setSelectedJobId(event.target.value)} className="ops-input mt-2 w-full rounded-md px-3 py-3 text-sm">
+            <option value="">Global candidate dossier list</option>
+            {jobs.map((job) => <option key={job.id} value={job.id}>{job.title}</option>)}
+          </select>
+          <p className="mt-2 text-sm text-foreground-muted">
+            Select a job to view candidates ranked by ATS, semantic similarity, and experience fit for that JD.
+          </p>
         </div>
 
         {error && <div className="rounded-lg border border-error/30 bg-error/10 p-4 text-sm text-error">{error}</div>}
@@ -80,42 +119,56 @@ export default function CandidatesPage() {
               <div>Resume state</div>
               <div>ATS / match</div>
             </div>
-            {candidates.map((candidate) => (
-              <div key={candidate.id} className="grid gap-4 border-b border-white/10 px-5 py-4 last:border-b-0 lg:grid-cols-[minmax(180px,1.4fr)_minmax(120px,1fr)_120px_120px] lg:items-start">
+            {candidates.map((candidate) => {
+              const candidateId = candidate.id || candidate.candidate_id;
+              const visibleSkills = selectedJobId ? candidate.matched_skills || [] : candidate.skills || [];
+              return (
+              <div key={candidateId} className="grid gap-4 border-b border-white/10 px-5 py-4 last:border-b-0 lg:grid-cols-[minmax(180px,1.4fr)_minmax(120px,1fr)_120px_120px] lg:items-start">
                 <div className="min-w-0">
-                    <Link href={`/candidates/${candidate.id}`} className="text-lg font-semibold hover:text-accent">
-                      {candidate.full_name || candidate.email || "Unnamed candidate"}
+                    <Link href={`/candidates/${candidateId}`} className="text-lg font-semibold hover:text-accent">
+                      {candidate.full_name || candidate.email || "Candidate Profile"}
                     </Link>
                     <p className="mt-1 text-sm text-foreground-muted">{candidate.headline || candidate.location || "Profile details pending extraction"}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {(candidate.skills || []).slice(0, 6).map((skill: string) => (
+                    {visibleSkills.slice(0, 6).map((skill: string) => (
                       <span key={skill} className="ops-chip rounded-md px-2 py-1 text-xs">
                         {skill}
                       </span>
                     ))}
-                    {(!candidate.skills || candidate.skills.length === 0) && <span className="text-sm text-foreground-muted">No skills extracted yet</span>}
+                    {visibleSkills.length === 0 && <span className="text-sm text-foreground-muted">No skills extracted yet</span>}
                   </div>
-                  <div className="text-sm text-foreground-muted">{candidate.latest_resume_status || "No resume"}</div>
+                  <div className="text-sm text-foreground-muted">{candidate.current_stage || candidate.latest_resume_status || (candidate.latest_resume_id ? "Resume linked" : "No resume")}</div>
                   <div className="flex flex-col gap-2">
                     <div className="text-sm text-foreground-muted">
-                      {candidate.best_match_score ? `${Math.round(candidate.best_match_score)} match` : "No match"}
+                      {selectedJobId
+                        ? `${Math.round(candidate.ats_score ?? candidate.overall_score ?? 0)} job fit`
+                        : candidate.best_match_score ? `${Math.round(candidate.best_match_score)} match` : "No match"}
                     </div>
                     <button
-                      onClick={() => saveFeedback(candidate.id, "shortlist")}
-                      disabled={savingId === candidate.id}
+                      title="Delete candidate"
+                      onClick={() => deleteCandidate(candidateId)}
+                      disabled={savingId === candidateId}
+                      className="rounded-lg border border-error/30 px-3 py-2 text-sm text-error hover:bg-error/10 disabled:opacity-60"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => saveFeedback(candidateId, "shortlist")}
+                      disabled={savingId === candidateId}
                       className="ops-button-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm disabled:opacity-60"
                     >
-                      {savingId === candidate.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bookmark className="h-4 w-4" />}
+                      {savingId === candidateId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bookmark className="h-4 w-4" />}
                       Shortlist
                     </button>
-                    <Link href={`/candidates/${candidate.id}`} className="ops-button inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold">
+                    <Link href={`/candidates/${candidateId}`} className="ops-button inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold">
                       Open
                       <ArrowUpRight className="h-4 w-4" />
                     </Link>
                   </div>
                 </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

@@ -25,13 +25,12 @@ class JobStatus(StrEnum):
 
 
 class PipelineStage(StrEnum):
-    applied = "Applied"
-    screening = "Screening"
-    interview = "Interview"
-    technical_round = "Technical Round"
-    final_round = "Final Round"
-    hired = "Hired"
-    rejected = "Rejected"
+    uploaded = "uploaded"
+    ranked = "ranked"
+    shortlisted = "shortlisted"
+    interviewing = "interviewing"
+    rejected = "rejected"
+    hired = "hired"
 
 
 class FeedbackAction(StrEnum):
@@ -207,7 +206,7 @@ class CandidatePipelineStage(TimestampedUUIDModel):
     job_description_id: Mapped[UUID | None] = mapped_column(ForeignKey("job_descriptions.id"), index=True)
     stage: Mapped[PipelineStage] = mapped_column(
         Enum(PipelineStage, values_callable=lambda values: [item.value for item in values]),
-        default=PipelineStage.applied,
+        default=PipelineStage.uploaded,
         index=True,
     )
     position: Mapped[int] = mapped_column(Integer, default=0)
@@ -338,11 +337,20 @@ class ATSScore(TimestampedUUIDModel):
     __tablename__ = "ats_scores"
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    candidate_id: Mapped[UUID] = mapped_column(ForeignKey("candidates.id"), index=True)
+    job_description_id: Mapped[UUID] = mapped_column(ForeignKey("job_descriptions.id"), index=True)
     resume_id: Mapped[UUID] = mapped_column(ForeignKey("resumes.id"), index=True)
     ats_score: Mapped[float] = mapped_column(Numeric(6, 2), index=True)
+    components: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     issues: Mapped[list[str]] = mapped_column(JSONB, default=list)
     recommendations: Mapped[list[str]] = mapped_column(JSONB, default=list)
-    scoring_version: Mapped[str] = mapped_column(String(64), default="ats-heuristic-v1")
+    explanation: Mapped[str | None] = mapped_column(Text)
+    scoring_version: Mapped[str] = mapped_column(String(64), default="ats-job-context-v1")
+
+    __table_args__ = (
+        UniqueConstraint("candidate_id", "job_description_id", name="uq_ats_score_candidate_job"),
+        Index("ix_ats_scores_job_score", "job_description_id", "ats_score"),
+    )
 
 
 class LLMUsageLog(TimestampedUUIDModel):

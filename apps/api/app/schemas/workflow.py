@@ -20,6 +20,8 @@ class StageUpdateResponse(BaseModel):
     position: int
     updated_at: datetime
 
+    model_config = {"from_attributes": True}
+
 
 class RecruiterNoteCreate(BaseModel):
     candidate_id: UUID

@@ -33,6 +33,7 @@ class CandidateMatchRead(BaseModel):
 
 class SemanticSearchRequest(BaseModel):
     query: str = Field(min_length=2)
+    job_description_id: UUID | None = None
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
     min_years_experience: int | None = None
@@ -48,3 +49,18 @@ class SemanticSearchResult(BaseModel):
     score: float
     snippet: str
     payload: dict
+
+
+class CandidateSearchResult(BaseModel):
+    candidate_id: UUID
+    full_name: str | None
+    headline: str | None
+    location: str | None
+    latest_resume_id: UUID | None
+    semantic_score: float
+    ats_alignment: float | None = None
+    matched_skills: list[str] = Field(default_factory=list)
+    missing_skills: list[str] = Field(default_factory=list)
+    experience_fit: float | None = None
+    summary: str | None = None
+    overlap_reasoning: str

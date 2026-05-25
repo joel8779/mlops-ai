@@ -269,7 +269,7 @@ export default function DashboardPage() {
                   <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
                     <div className="mb-3 flex items-center gap-2 text-sm font-medium"><Users className="h-4 w-4 text-accent" />Candidates</div>
                     <div className="space-y-2 text-sm text-foreground-muted">
-                      {candidates.slice(0, 4).map((candidate) => <div key={candidate.id}>{candidate.full_name || candidate.email || "Unnamed"} - {candidate.latest_resume_status || "profile"}</div>)}
+                      {candidates.slice(0, 4).map((candidate) => <div key={candidate.id}>{candidate.full_name || candidate.email || "Candidate Profile"} - {candidate.latest_resume_status || "profile"}</div>)}
                       {candidates.length === 0 && <div>No parsed candidates.</div>}
                     </div>
                   </div>

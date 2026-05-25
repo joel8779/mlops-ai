@@ -10,6 +10,7 @@ from app.models.domain import Resume
 from app.repositories.resumes import ResumeRepository
 from app.schemas.auth import AuthContext
 from app.schemas.resume import ResumeRead, ResumeUploadResponse
+from app.services.delete_service import DeleteWorkflowService
 from app.services.resume_ingestion import ingest_resume
 from app.services.storage import ObjectStorage, get_object_storage
 
@@ -44,3 +45,16 @@ async def get_resume(
     if resume is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume not found")
     return resume
+
+
+@router.delete("/{resume_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_resume(
+    resume_id: UUID,
+    auth: AuthContext = Depends(require_roles(UserRole.admin, UserRole.recruiter)),
+    db: AsyncSession = Depends(get_db),
+    storage: ObjectStorage = Depends(get_object_storage),
+) -> None:
+    resume = await ResumeRepository(db).get_for_org(resume_id, auth.organization_id)
+    if resume is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume not found")
+    await DeleteWorkflowService(db, storage).delete_resume(resume)

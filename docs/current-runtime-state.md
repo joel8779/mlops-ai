@@ -273,3 +273,31 @@ wrapt==1.17.3
 xgboost==2.1.3
 zipp==4.1.0
 ```
+# Current Runtime State - Phase 42
+
+Date: 2026-05-25
+
+NEURAL OPS is currently a connected FastAPI + Next.js recruiting intelligence platform with PostgreSQL, Redis/Celery, Qdrant, OCR, Gemini provider plumbing, and sentence-transformer embeddings. The product surface is no longer a placeholder dashboard; the remaining failures are integration gaps between ingestion, matching, ATS, workflow state, and frontend hydration.
+
+Important verified state:
+
+- ATS is modeled as a job-scoped relationship through `candidate_id + job_description_id`; global resume scoring is rejected.
+- Candidate matching persists `CandidateMatch` per job and now marks job-scoped workflow state as `ranked`.
+- Recruiter feedback now updates per-job workflow state for `shortlisted`, `interviewing`, `rejected`, and `hired`.
+- Semantic search returns candidate-level aggregate results, not raw vector chunks.
+- Candidate identity extraction now blocks the `"Candidate Profile"` false positive and avoids overwriting a real name with fallback identity.
+- The current local `.env` has `DEBUG=release`, which blocks API startup because `DEBUG` must be boolean. Override with `DEBUG=false` or fix the environment value.
+
+Validation run:
+
+- `python -m compileall apps/api/app` passed.
+- API import passed with `DEBUG=false`.
+- `npm.cmd exec tsc -- --noEmit` passed.
+- `pytest` is not installed in the local `.venv`.
+- `npm run lint` is blocked because ESLint is not installed for the existing `next lint` script.
+
+Open runtime risks:
+
+- Resume and JD ingestion still depend on local OCR/parser binaries, object storage configuration, Redis/Celery availability, and embedding/Qdrant readiness.
+- Gemini structured extraction plumbing exists, but JD extraction still has deterministic fallback behavior and should be promoted to Gemini-first extraction once provider/runtime credentials are confirmed.
+- Existing databases need Alembic migration `0005_pipeline_stage_contract` to convert old pipeline stage enum values to the product contract.

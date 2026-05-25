@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 
 from app.logging import get_logger
 
@@ -29,9 +29,18 @@ def install_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(SQLAlchemyError)
     async def sqlalchemy_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
         logger.exception("database_error", path=request.url.path)
+        if isinstance(exc, IntegrityError):
+            detail = "This record conflicts with existing data. Check duplicates or required relationships."
+            status_code = status.HTTP_409_CONFLICT
+        elif isinstance(exc, OperationalError):
+            detail = "The database is unavailable or still starting. Try again after the backend is ready."
+            status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        else:
+            detail = "The database rejected this operation. Check the submitted fields and related records."
+            status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"detail": "Database operation failed"},
+            status_code=status_code,
+            content={"detail": detail},
         )
 
     @app.exception_handler(Exception)

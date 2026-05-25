@@ -48,6 +48,9 @@ class ObjectStorage:
         with body:
             return body.read()
 
+    def delete_object(self, key: str) -> None:
+        self._client.delete_object(Bucket=settings.s3_bucket, Key=key)
+
 
 def get_object_storage() -> ObjectStorage:
     return ObjectStorage()

@@ -34,6 +34,9 @@ export default function AnalyticsPage() {
   ];
   const funnel = analytics?.hiring_funnel || {};
   const topSkills = analytics?.top_skills || [];
+  const candidatesPerJob = analytics?.candidates_per_job || [];
+  const atsDistribution = analytics?.ats_score_distribution || {};
+  const semanticAverages = analytics?.semantic_match_averages || [];
 
   return (
     <AppShell>
@@ -123,6 +126,52 @@ export default function AnalyticsPage() {
                   ))}
                   {(workspace?.activity || []).length === 0 && (
                     <p className="text-sm text-foreground-muted">No workflow or resume processing events yet.</p>
+                  )}
+                </div>
+              </section>
+              <section className="ops-panel rounded-xl p-5">
+                <h2 className="text-base font-semibold">Candidates per job</h2>
+                <div className="mt-4 space-y-3">
+                  {candidatesPerJob.length === 0 ? (
+                    <p className="text-sm text-foreground-muted">No job ranking data yet.</p>
+                  ) : (
+                    candidatesPerJob.slice(0, 8).map((item: any) => (
+                      <div key={item.job_id} className="flex items-center justify-between rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
+                        <span>{item.job_title}</span>
+                        <span className="text-foreground-muted">{item.candidate_count}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+              <section className="ops-panel rounded-xl p-5">
+                <h2 className="text-base font-semibold">ATS distribution</h2>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {Object.entries(atsDistribution).map(([bucket, count]) => (
+                    <div key={bucket} className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-3 text-sm">
+                      <div className="text-foreground-muted">{bucket.replace("_", "-")}</div>
+                      <div className="mt-1 text-xl font-semibold">{String(count)}</div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+              <section className="ops-panel rounded-xl p-5 lg:col-span-2">
+                <h2 className="text-base font-semibold">Semantic match averages</h2>
+                <div className="mt-4 space-y-3">
+                  {semanticAverages.length === 0 ? (
+                    <p className="text-sm text-foreground-muted">No semantic match averages yet.</p>
+                  ) : (
+                    semanticAverages.map((item: any) => (
+                      <div key={item.job_id} className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-3 text-sm">
+                        <div className="flex items-center justify-between">
+                          <span>{item.job_title}</span>
+                          <span className="text-accent">{Math.round(item.average_semantic_score)}</span>
+                        </div>
+                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                          <div className="h-full bg-accent" style={{ width: `${Math.min(100, Math.max(4, item.average_semantic_score))}%` }} />
+                        </div>
+                      </div>
+                    ))
                   )}
                 </div>
               </section>

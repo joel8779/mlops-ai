@@ -1,15 +1,14 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import { Bot, FileText, Loader2 } from "lucide-react";
+import { Bot, Loader2 } from "lucide-react";
 import AppShell from "@/components/app-shell";
-import { aiApi, atsApi, candidatesApi } from "@/lib/api";
+import { aiApi, candidatesApi } from "@/lib/api";
 
 export default function CandidateProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [candidate, setCandidate] = useState<any>(null);
   const [summary, setSummary] = useState("");
-  const [atsScore, setAtsScore] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState("");
@@ -42,19 +41,6 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
     }
   };
 
-  const scoreResume = async () => {
-    if (!candidate?.latest_resume_id) return;
-    setAiLoading(true);
-    setError("");
-    try {
-      setAtsScore(await atsApi.scoreResume(candidate.latest_resume_id));
-    } catch (err: any) {
-      setError(err.message || "Unable to score resume");
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
   return (
     <AppShell>
       <div className="space-y-6">
@@ -76,10 +62,6 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
                 <button onClick={generateSummary} disabled={aiLoading} className="ops-button inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-60">
                   {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
                   AI summary
-                </button>
-                <button onClick={scoreResume} disabled={aiLoading || !candidate?.latest_resume_id} className="ops-button-secondary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm disabled:opacity-60">
-                  <FileText className="h-4 w-4" />
-                  ATS score
                 </button>
               </div>
             </div>
@@ -120,12 +102,10 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
                     <div className="text-foreground-muted">Best match score</div>
                     <div className="mt-1">{candidate?.best_match_score ?? "No match generated"}</div>
                   </div>
-                  {atsScore && (
-                    <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
-                      <div className="text-foreground-muted">ATS score</div>
-                      <div className="mt-1">{atsScore.ats_score ?? "Returned without score"}</div>
-                    </div>
-                  )}
+                  <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
+                    <div className="text-foreground-muted">ATS scoring</div>
+                    <div className="mt-1">Open a job to score this candidate against that JD.</div>
+                  </div>
                 </div>
               </aside>
             </div>

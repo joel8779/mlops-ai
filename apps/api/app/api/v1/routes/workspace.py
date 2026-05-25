@@ -137,16 +137,6 @@ async def load_demo_workspace(auth: AuthContext = Depends(get_current_auth), db:
                 )
             )
 
-        db.add(
-            ATSScore(
-                organization_id=auth.organization_id,
-                resume_id=resume.id,
-                ats_score=86 + index * 2,
-                issues=["Resume has dense project history; validate seniority during screen"] if index == 1 else [],
-                recommendations=["Prioritize for technical screen", "Compare against active backend roles"],
-            )
-        )
-
         stage = list(PipelineStage)[index % 5]
         db.add(
             CandidatePipelineStage(
@@ -187,6 +177,25 @@ async def load_demo_workspace(auth: AuthContext = Depends(get_current_auth), db:
                     scoring_version="demo-hybrid-v1",
                 )
             )
+            if candidate_index == job_index:
+                db.add(
+                    ATSScore(
+                        organization_id=auth.organization_id,
+                        candidate_id=candidate.id,
+                        job_description_id=job.id,
+                        resume_id=(await _latest_demo_resume_id(db, candidate.id)),
+                        ats_score=score,
+                        components=[
+                            {"name": "semantic_similarity", "score": semantic, "weight": 40, "evidence": ["Demo semantic alignment"]},
+                            {"name": "skill_weighting", "score": min(98, score + 2), "weight": 25, "evidence": matched},
+                            {"name": "experience_fit", "score": max(60, score - 4), "weight": 15, "evidence": ["Demo experience fit"]},
+                        ],
+                        issues=[f"Missing job skill: {skill}" for skill in missing],
+                        recommendations=["Review match explanation before shortlist"],
+                        explanation=f"{candidate.full_name} has a job-context ATS score for {job.title}.",
+                        scoring_version="demo-ats-job-context-v1",
+                    )
+                )
 
     for activity_type, payload in _demo_activities(candidates, jobs):
         db.add(
@@ -331,6 +340,15 @@ async def _match_insights(db: AsyncSession, auth: AuthContext) -> list[MatchInsi
         )
         for match, name, title in rows.all()
     ]
+
+
+async def _latest_demo_resume_id(db: AsyncSession, candidate_id: UUID) -> UUID:
+    resume_id = await db.scalar(
+        select(Resume.id).where(Resume.candidate_id == candidate_id).order_by(desc(Resume.created_at)).limit(1)
+    )
+    if resume_id is None:
+        raise RuntimeError("Demo candidate resume was not created")
+    return resume_id
 
 
 def _recommendations(counts: WorkspaceCounts, pipeline: PipelineState) -> list[str]:

@@ -1,15 +1,17 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_auth
+from app.core.auth import get_current_auth, require_roles
+from app.core.security import UserRole
 from app.db.session import get_db
 from app.models.domain import CandidateMatch, CandidatePipelineStage
 from app.repositories.candidates import CandidateRepository
 from app.schemas.auth import AuthContext
 from app.schemas.candidates import CandidateListItem, CandidateRead
+from app.services.delete_service import DeleteWorkflowService
 
 router = APIRouter()
 
@@ -41,6 +43,19 @@ async def get_candidate(
         raw_profile=candidate.raw_profile,
         resume_text_preview=(resume.extracted_text[:2000] if resume and resume.extracted_text else None),
     )
+
+
+@router.delete("/{candidate_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_candidate(
+    candidate_id: UUID,
+    auth: AuthContext = Depends(require_roles(UserRole.admin, UserRole.recruiter)),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    repository = CandidateRepository(db)
+    candidate = await repository.get_for_org(candidate_id, auth.organization_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    await DeleteWorkflowService(db).delete_candidate(candidate)
 
 
 async def _candidate_item(db: AsyncSession, repository: CandidateRepository, candidate) -> CandidateListItem:

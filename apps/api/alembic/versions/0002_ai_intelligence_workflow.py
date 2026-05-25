@@ -29,13 +29,12 @@ def base_columns() -> list[sa.Column]:
 def upgrade() -> None:
     job_status = postgresql.ENUM("draft", "active", "closed", name="jobstatus")
     pipeline_stage = postgresql.ENUM(
-        "Applied",
-        "Screening",
-        "Interview",
-        "Technical Round",
-        "Final Round",
-        "Hired",
-        "Rejected",
+        "uploaded",
+        "ranked",
+        "shortlisted",
+        "interviewing",
+        "rejected",
+        "hired",
         name="pipelinestage",
         create_type=False,
     )
