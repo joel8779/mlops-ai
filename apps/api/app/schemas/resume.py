@@ -21,6 +21,7 @@ class ResumeRead(BaseModel):
     original_filename: str
     content_type: str
     status: ResumeStatus
+    parse_error: str | None = None
     parser_version: str | None
     metadata_json: dict
     created_at: datetime

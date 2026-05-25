@@ -90,6 +90,9 @@ class CandidateIdentityExtractor:
         return re.sub(r"\s+", " ", match.group(0)).strip() if match else None
 
     def _clean_name(self, value: str) -> str | None:
+        label = value.split(":", 1)[0].strip().lower()
+        if label in self.blocked_headers:
+            return None
         for segment in re.split(r"[\|,;:]+", value):
             segment = re.sub(r"\s+", " ", segment).strip()
             if segment and segment != value:
@@ -106,6 +109,8 @@ class CandidateIdentityExtractor:
         if len(words) > 4 or len(value) > 80:
             return None
         if any(word.lower() in {"engineer", "developer", "manager", "analyst", "consultant"} for word in words):
+            return None
+        if any(word.lower() in {"python", "fastapi", "docker", "postgresql", "react", "java", "aws", "kubernetes"} for word in words):
             return None
         if NAME_RE.match(value):
             return value

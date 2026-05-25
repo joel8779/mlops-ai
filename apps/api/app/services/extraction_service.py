@@ -104,16 +104,16 @@ class ExtractionService:
 
             with pdfplumber.open(BytesIO(payload)) as pdf:
                 page_count = len(pdf.pages)
-                if page_count > settings.ocr_max_pages:
-                    raise ResumeParseError(
-                        f"PDF has {page_count} pages; limit is {settings.ocr_max_pages}"
-                    )
-                pages = [page.extract_text() or "" for page in pdf.pages]
+                extract_pages = min(page_count, settings.ocr_max_pages)
+                pages = [page.extract_text() or "" for page in pdf.pages[:extract_pages]]
                 metadata = {
                     key: str(value)
                     for key, value in (pdf.metadata or {}).items()
                     if key.lower() in {"title", "author", "subject"} and value
                 }
+                if page_count > extract_pages:
+                    metadata["truncated_pages"] = str(page_count - extract_pages)
+                    metadata["extracted_pages"] = str(extract_pages)
             return normalize_text("\n".join(pages)), page_count, "pdfplumber", metadata
         except ResumeParseError:
             raise
@@ -129,16 +129,18 @@ class ExtractionService:
             document = fitz.open(stream=payload, filetype="pdf")
             try:
                 page_count = document.page_count
-                if page_count > settings.ocr_max_pages:
-                    raise ResumeParseError(
-                        f"PDF has {page_count} pages; limit is {settings.ocr_max_pages}"
-                    )
+                extract_pages = min(page_count, settings.ocr_max_pages)
                 metadata = {
                     key: str(value)
                     for key, value in (document.metadata or {}).items()
                     if key.lower() in {"title", "author", "subject"} and value
                 }
-                return normalize_text("\n".join(page.get_text() for page in document)), page_count, "pymupdf", metadata
+                if page_count > extract_pages:
+                    metadata["truncated_pages"] = str(page_count - extract_pages)
+                    metadata["extracted_pages"] = str(extract_pages)
+                return normalize_text(
+                    "\n".join(document[page_index].get_text() for page_index in range(extract_pages))
+                ), page_count, "pymupdf", metadata
             finally:
                 document.close()
         except ResumeParseError:

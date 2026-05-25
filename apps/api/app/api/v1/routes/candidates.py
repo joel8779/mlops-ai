@@ -11,6 +11,7 @@ from app.models.domain import CandidateMatch, CandidatePipelineStage
 from app.repositories.candidates import CandidateRepository
 from app.schemas.auth import AuthContext
 from app.schemas.candidates import CandidateListItem, CandidateRead
+from app.services.candidate_extraction_service import CandidateExtractionService
 from app.services.delete_service import DeleteWorkflowService
 
 router = APIRouter()
@@ -23,6 +24,9 @@ async def list_candidates(
 ):
     repository = CandidateRepository(db)
     candidates = await repository.list_for_org(auth.organization_id)
+    for candidate in candidates:
+        await _repair_candidate_identity(db, repository, candidate)
+    await db.commit()
     return [await _candidate_item(db, repository, candidate) for candidate in candidates]
 
 
@@ -36,6 +40,8 @@ async def get_candidate(
     candidate = await repository.get_for_org(candidate_id, auth.organization_id)
     if candidate is None:
         raise HTTPException(status_code=404, detail="Candidate not found")
+    await _repair_candidate_identity(db, repository, candidate)
+    await db.commit()
     item = await _candidate_item(db, repository, candidate)
     resume = await repository.latest_resume(candidate.id)
     return CandidateRead(
@@ -84,3 +90,43 @@ async def _candidate_item(db: AsyncSession, repository: CandidateRepository, can
         best_match_score=float(best_match) if best_match is not None else None,
         created_at=candidate.created_at,
     )
+
+
+async def _repair_candidate_identity(db: AsyncSession, repository: CandidateRepository, candidate) -> None:
+    if candidate.full_name and candidate.full_name != "Candidate Profile" and candidate.headline:
+        return
+    resume = await repository.latest_resume(candidate.id)
+    if resume is None or not resume.extracted_text:
+        if candidate.email and (not candidate.full_name or candidate.full_name == "Candidate Profile"):
+            candidate.full_name = _name_from_email(candidate.email)
+        return
+    extraction = await CandidateExtractionService().extract(
+        resume.extracted_text,
+        resume.original_filename,
+        resume.metadata_json.get("parse") if resume.metadata_json else {},
+        use_gemini=False,
+    )
+    if not candidate.full_name or candidate.full_name == "Candidate Profile":
+        candidate.full_name = extraction.full_name
+    candidate.email = candidate.email or extraction.email
+    candidate.phone = candidate.phone or extraction.phone
+    candidate.summary = candidate.summary or extraction.summary
+    if not candidate.headline and extraction.skills:
+        candidate.headline = f"{(extraction.inferred_seniority or 'qualified').title()} candidate with {', '.join(extraction.skills[:3])}"
+    candidate.raw_profile = {
+        **(candidate.raw_profile or {}),
+        "identity_repair": {
+            "source": extraction.source,
+            "resume_id": str(resume.id),
+        },
+        "education": (candidate.raw_profile or {}).get("education") or extraction.education,
+        "experience": (candidate.raw_profile or {}).get("experience") or extraction.experience,
+        "projects": (candidate.raw_profile or {}).get("projects") or extraction.projects,
+        "inferred_seniority": (candidate.raw_profile or {}).get("inferred_seniority") or extraction.inferred_seniority,
+    }
+
+
+def _name_from_email(email: str) -> str:
+    local = email.split("@", 1)[0]
+    parts = [part for part in local.replace(".", "_").replace("-", "_").split("_") if part]
+    return " ".join(part.capitalize() for part in parts[:4]) or "Imported Candidate"

@@ -93,7 +93,7 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 10 * 1024 * 1024
     ocr_enabled: bool = True
     ocr_timeout_seconds: int = 20
-    ocr_max_pages: int = 5
+    ocr_max_pages: int = 20
     ocr_pdf_render_dpi: int = 160
     ocr_min_text_chars: int = 24
 

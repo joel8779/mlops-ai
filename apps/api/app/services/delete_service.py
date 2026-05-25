@@ -45,28 +45,53 @@ class DeleteWorkflowService:
 
     async def delete_candidate(self, candidate: Candidate) -> None:
         now = datetime.now(timezone.utc)
-        resumes = await self.db.scalars(
-            select(Resume).where(Resume.candidate_id == candidate.id, Resume.deleted_at.is_(None))
-        )
-        for resume in list(resumes):
-            await self.delete_resume(resume)
         point_ids = await self._candidate_point_ids(candidate_id=candidate.id)
-        EmbeddingService().delete_candidate_points(point_ids)
-        await self.db.execute(delete(CandidateEmbedding).where(CandidateEmbedding.candidate_id == candidate.id))
-        await self.db.execute(delete(ATSScore).where(ATSScore.candidate_id == candidate.id))
-        await self.db.execute(delete(CandidateSkill).where(CandidateSkill.candidate_id == candidate.id))
-        await self.db.execute(delete(CandidateMatch).where(CandidateMatch.candidate_id == candidate.id))
-        await self.db.execute(delete(CandidatePipelineStage).where(CandidatePipelineStage.candidate_id == candidate.id))
-        await self.db.execute(delete(CandidateBookmark).where(CandidateBookmark.candidate_id == candidate.id))
-        await self.db.execute(delete(RecruiterNote).where(RecruiterNote.candidate_id == candidate.id))
-        await self.db.execute(delete(RankingFeedback).where(RankingFeedback.candidate_id == candidate.id))
-        await self.db.execute(
-            update(RecruiterActivity)
-            .where(RecruiterActivity.candidate_id == candidate.id)
-            .values(candidate_id=None)
+        resumes = list(
+            await self.db.scalars(select(Resume).where(Resume.candidate_id == candidate.id, Resume.deleted_at.is_(None)))
         )
-        candidate.deleted_at = now
-        await self.db.commit()
+        storage_keys = [resume.storage_key for resume in resumes]
+        try:
+            await self.db.execute(delete(ATSScore).where(ATSScore.candidate_id == candidate.id))
+            await self.db.execute(delete(CandidateMatch).where(CandidateMatch.candidate_id == candidate.id))
+            await self.db.execute(delete(CandidatePipelineStage).where(CandidatePipelineStage.candidate_id == candidate.id))
+            await self.db.execute(delete(CandidateBookmark).where(CandidateBookmark.candidate_id == candidate.id))
+            await self.db.execute(delete(RecruiterNote).where(RecruiterNote.candidate_id == candidate.id))
+            await self.db.execute(delete(RankingFeedback).where(RankingFeedback.candidate_id == candidate.id))
+            await self.db.execute(delete(CandidateSkill).where(CandidateSkill.candidate_id == candidate.id))
+            await self.db.execute(delete(CandidateEmbedding).where(CandidateEmbedding.candidate_id == candidate.id))
+            await self.db.execute(
+                delete(ResumeProcessingEvent).where(
+                    ResumeProcessingEvent.resume_id.in_([resume.id for resume in resumes])
+                )
+            )
+            await self.db.execute(
+                update(RecruiterActivity)
+                .where(RecruiterActivity.candidate_id == candidate.id)
+                .values(candidate_id=None)
+            )
+            for resume in resumes:
+                resume.deleted_at = now
+                resume.candidate_id = None
+                resume.metadata_json = {
+                    **(resume.metadata_json or {}),
+                    "candidate_delete": {"candidate_id": str(candidate.id), "deleted_at": now.isoformat()},
+                }
+            candidate.deleted_at = now
+            candidate.raw_profile = {
+                **(candidate.raw_profile or {}),
+                "delete_workflow": {
+                    "status": "db_complete",
+                    "resume_count": len(resumes),
+                    "candidate_vector_count": len(point_ids),
+                },
+            }
+            await self.db.commit()
+        except Exception:
+            await self.db.rollback()
+            raise
+
+        self._delete_candidate_vectors_best_effort(candidate, point_ids)
+        self._delete_storage_best_effort(candidate, storage_keys)
 
     async def delete_job(self, job: JobDescription) -> None:
         point_ids = await self._job_point_ids(job.id)
@@ -98,3 +123,29 @@ class DeleteWorkflowService:
             select(JobDescriptionEmbedding.qdrant_point_id).where(JobDescriptionEmbedding.job_description_id == job_id)
         )
         return [row[0] for row in result.all()]
+
+    def _delete_candidate_vectors_best_effort(self, candidate: Candidate, point_ids: list[str]) -> None:
+        try:
+            EmbeddingService().delete_candidate_points(point_ids)
+        except Exception as exc:
+            candidate.raw_profile = {
+                **(candidate.raw_profile or {}),
+                "delete_vector_warning": {
+                    "status": "qdrant_delete_failed",
+                    "point_count": len(point_ids),
+                    "error": str(exc),
+                },
+            }
+
+    def _delete_storage_best_effort(self, candidate: Candidate, storage_keys: list[str]) -> None:
+        failures: list[dict] = []
+        for key in storage_keys:
+            try:
+                self.storage.delete_object(key)
+            except Exception as exc:
+                failures.append({"storage_key": key, "error": str(exc)})
+        if failures:
+            candidate.raw_profile = {
+                **(candidate.raw_profile or {}),
+                "delete_storage_warning": failures[:10],
+            }

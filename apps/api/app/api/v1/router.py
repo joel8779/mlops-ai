@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.routes import analytics, ats, auth, billing, candidates, feedback, health, jobs, matching, realtime, resumes, workspace
+from app.api.v1.routes import analytics, ats, auth, billing, candidates, diagnostics, feedback, health, jobs, matching, realtime, resumes, workspace
 
 api_router = APIRouter()
 api_router.include_router(health.router, prefix="/health", tags=["health"])
@@ -10,6 +10,7 @@ api_router.include_router(resumes.router, prefix="/resumes", tags=["resumes"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["job descriptions"])
 api_router.include_router(matching.router, prefix="/matching", tags=["matching"])
 api_router.include_router(workspace.router, prefix="/workspace", tags=["workspace"])
+api_router.include_router(diagnostics.router, prefix="/diagnostics", tags=["diagnostics"])
 
 # Optional routes - may fail if dependencies missing
 try:

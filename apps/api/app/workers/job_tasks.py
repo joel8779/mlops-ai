@@ -2,6 +2,7 @@ import asyncio
 from uuid import UUID
 
 from app.db.session import AsyncSessionLocal
+from app.models.domain import JobDescription
 from app.services.job_intelligence_service import JobIntelligenceService
 from app.workers.celery_app import celery_app
 
@@ -13,4 +14,21 @@ def index_job_description_task(job_description_id: str) -> None:
 
 async def _index_job(job_description_id: UUID) -> None:
     async with AsyncSessionLocal() as db:
-        await JobIntelligenceService(db).index_job(job_description_id)
+        try:
+            await JobIntelligenceService(db).index_job(job_description_id)
+        except Exception as exc:
+            await db.rollback()
+            job = await db.get(JobDescription, job_description_id)
+            if job is not None:
+                job.metadata_json = {
+                    **(job.metadata_json or {}),
+                    "indexing": {
+                        "status": "failed",
+                        "error_code": "job_embedding_or_qdrant_failed",
+                        "message": "Job embedding or Qdrant indexing failed.",
+                        "exception_type": type(exc).__name__,
+                        "exception_message": str(exc),
+                    },
+                }
+                await db.commit()
+            raise

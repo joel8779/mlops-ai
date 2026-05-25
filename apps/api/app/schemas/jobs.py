@@ -58,11 +58,15 @@ class JobIntelligenceRead(BaseModel):
 
 class JobParseResult(BaseModel):
     skills: list[str]
+    preferred_skills: list[str] = Field(default_factory=list)
+    technologies: list[str] = Field(default_factory=list)
     years_experience_min: int | None
     years_experience_max: int | None
     education_requirements: list[str]
     keywords: list[str]
     role_category: str | None
+    seniority: str | None = None
+    summary: str | None = None
 
 
 class JobExtractionPreview(BaseModel):

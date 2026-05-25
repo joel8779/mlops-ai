@@ -21,6 +21,10 @@ SKILL_TERMS = {
     "kubernetes", "aws", "gcp", "azure", "terraform", "celery", "sqlalchemy", "mlflow",
     "prefect", "nlp", "machine learning", "pytorch", "tensorflow", "react", "next.js",
     "typescript", "javascript", "node.js", "java", "spring", "go", "microservices",
+    "spark", "airflow", "databricks", "snowflake", "pandas", "numpy", "scikit-learn",
+    "langchain", "llm", "rag", "qdrant", "elasticsearch", "mongodb", "graphql",
+    "rest", "ci/cd", "github actions", "jenkins", "linux", "bash", "prometheus",
+    "grafana", "opencv", "ocr", "transformers", "huggingface",
 }
 EDUCATION_TERMS = ["bachelor", "master", "phd", "computer science", "engineering", "mba"]
 
@@ -47,8 +51,8 @@ class JobIntelligenceService:
             years_experience_min=parsed.years_experience_min,
             years_experience_max=parsed.years_experience_max,
             education_requirements=parsed.education_requirements,
-            required_skills=parsed.skills[:10],
-            optional_skills=parsed.skills[10:],
+            required_skills=parsed.skills[:12],
+            optional_skills=parsed.preferred_skills or parsed.technologies[12:],
             keywords=parsed.keywords,
             metadata_json={
                 "source": source,
@@ -58,6 +62,10 @@ class JobIntelligenceService:
                     "has_experience_requirement": parsed.years_experience_min is not None,
                     "has_education_requirement": bool(parsed.education_requirements),
                     "semantic_requirements": semantic_requirements,
+                    "preferred_skills": parsed.preferred_skills,
+                    "technologies": parsed.technologies,
+                    "seniority": parsed.seniority,
+                    "summary": parsed.summary,
                 },
                 "indexing": {"status": "queued"},
             },
@@ -127,11 +135,17 @@ class JobIntelligenceService:
             years_experience_min=parsed.years_experience_min,
             years_experience_max=parsed.years_experience_max,
             education_requirements=parsed.education_requirements,
-            required_skills=parsed.skills[:10],
-            optional_skills=parsed.skills[10:],
+            required_skills=parsed.skills[:12],
+            optional_skills=parsed.preferred_skills or parsed.technologies[12:],
             keywords=parsed.keywords,
             semantic_requirements=self.semantic_requirements(parsed_doc.text, parsed),
-            extraction_metadata=parsed_doc.metadata,
+            extraction_metadata={
+                **parsed_doc.metadata,
+                "technologies": parsed.technologies,
+                "seniority": parsed.seniority,
+                "summary": parsed.summary,
+                "preferred_skills": parsed.preferred_skills,
+            },
             warnings=[] if inferred_title != "Untitled Role" else ["Could not confidently infer a job title."],
         )
 
@@ -172,18 +186,25 @@ class JobIntelligenceService:
     def parse(self, text: str) -> JobParseResult:
         normalized = text.lower()
         skills = sorted({skill for skill in SKILL_TERMS if skill in normalized})
+        preferred_skills = self._skills_near(text, ["preferred", "nice to have", "bonus", "plus"])
+        required_skills = self._skills_near(text, ["required", "must", "requirements", "need", "responsibilities"]) or skills
         years = [int(match) for match in re.findall(r"(\d+)\+?\s*(?:years|yrs)", normalized)]
         education = sorted({term for term in EDUCATION_TERMS if term in normalized})
         tokens = re.findall(r"[a-zA-Z][a-zA-Z0-9\.\+#-]{2,}", normalized)
         keywords = [word for word, _ in Counter(tokens).most_common(30) if word not in {"and", "the", "with", "for"}]
         role_category = self._category(normalized)
+        seniority = self._seniority(max(years) if years else None, normalized)
         return JobParseResult(
-            skills=skills,
+            skills=required_skills,
+            preferred_skills=preferred_skills,
+            technologies=skills,
             years_experience_min=min(years) if years else None,
             years_experience_max=max(years) if len(years) > 1 else None,
             education_requirements=education,
             keywords=keywords,
             role_category=role_category,
+            seniority=seniority,
+            summary=self._summary(text, required_skills, seniority),
         )
 
     def infer_title(self, text: str, metadata: dict | None = None) -> str:
@@ -225,6 +246,47 @@ class JobIntelligenceService:
         if parsed.skills and not requirements:
             requirements.append(f"Role requires evidence across {', '.join(parsed.skills[:6])}.")
         return requirements
+
+    @classmethod
+    def _skills_near(cls, text: str, markers: list[str]) -> list[str]:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        found: set[str] = set()
+        active = False
+        for line in lines:
+            lower = line.lower()
+            if any(marker in lower for marker in markers):
+                active = True
+            elif active and re.match(r"^[A-Z][A-Za-z\s]{2,}:$", line):
+                active = False
+            if active or any(marker in lower for marker in markers):
+                found.update({skill for skill in SKILL_TERMS if skill in lower})
+            if len(found) >= 12:
+                break
+        return sorted(found)
+
+    @staticmethod
+    def _seniority(years: int | None, text: str) -> str | None:
+        if years is not None:
+            if years >= 8:
+                return "senior"
+            if years >= 3:
+                return "mid"
+            return "junior"
+        if any(term in text for term in ["principal", "staff", "lead", "architect"]):
+            return "senior"
+        if "intern" in text or "entry level" in text:
+            return "junior"
+        return None
+
+    @staticmethod
+    def _summary(text: str, skills: list[str], seniority: str | None) -> str:
+        compact = " ".join(text.split())
+        summary = compact[:280]
+        if skills:
+            summary += f" Key requirements: {', '.join(skills[:6])}."
+        if seniority:
+            summary += f" Seniority: {seniority}."
+        return summary
 
     @staticmethod
     def _looks_like_title(value: str) -> bool:

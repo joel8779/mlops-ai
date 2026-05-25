@@ -19,6 +19,7 @@ from app.schemas.jobs import (
     JobIntelligenceRead,
 )
 from app.services.delete_service import DeleteWorkflowService
+from app.services.ats_scoring_service import ATSScoringService
 from app.services.job_intelligence_service import JobIntelligenceService
 from app.services.matching_service import MatchingService
 
@@ -86,6 +87,7 @@ async def get_job_intelligence(
     )
     if existing_count is None:
         await MatchingService(db).rank_candidates(auth.organization_id, job, limit=100)
+    await _ensure_ats_scores(db, auth.organization_id, job.id)
 
     rows = await db.execute(
         select(CandidateMatch, Candidate, ATSScore.ats_score)
@@ -175,3 +177,39 @@ def _top_terms(values: list[str]) -> list[dict]:
         key = value.lower()
         counts[key] = counts.get(key, 0) + 1
     return [{"name": key, "count": count} for key, count in sorted(counts.items(), key=lambda item: item[1], reverse=True)[:10]]
+
+
+async def _ensure_ats_scores(db: AsyncSession, organization_id: UUID, job_id: UUID) -> None:
+    candidate_repository = CandidateRepository(db)
+    rows = await db.execute(
+        select(CandidateMatch, Candidate)
+        .join(Candidate, Candidate.id == CandidateMatch.candidate_id)
+        .outerjoin(
+            ATSScore,
+            (ATSScore.candidate_id == CandidateMatch.candidate_id)
+            & (ATSScore.job_description_id == CandidateMatch.job_description_id),
+        )
+        .where(
+            CandidateMatch.organization_id == organization_id,
+            CandidateMatch.job_description_id == job_id,
+            ATSScore.id.is_(None),
+            Candidate.deleted_at.is_(None),
+        )
+        .order_by(desc(CandidateMatch.overall_score))
+        .limit(25)
+    )
+    job = await JobDescriptionRepository(db).get_for_org(job_id, organization_id)
+    if job is None:
+        return
+    for match, candidate in rows.all():
+        resume = await candidate_repository.latest_resume(candidate.id)
+        if resume is None:
+            continue
+        skills = await candidate_repository.skills_for_candidate(candidate.id)
+        await ATSScoringService(db).score_candidate_for_job(
+            job,
+            candidate,
+            resume,
+            semantic_score=float(match.semantic_score),
+            skills=skills,
+        )

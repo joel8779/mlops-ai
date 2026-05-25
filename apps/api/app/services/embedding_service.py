@@ -232,6 +232,7 @@ class EmbeddingService:
                 payload={
                     "organization_id": str(organization_id),
                     "job_description_id": str(job_description_id),
+                    "job_id": str(job_description_id),
                     "chunk_index": chunk.index,
                     "text": chunk.text,
                     "model": settings.embedding_model_name,

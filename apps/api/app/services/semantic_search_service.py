@@ -7,8 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.domain import ATSScore, Candidate, CandidateMatch, Resume
 from app.repositories.candidates import CandidateRepository
+from app.repositories.jobs import JobDescriptionRepository
 from app.schemas.matching import CandidateSearchResult, SemanticSearchRequest, SemanticSearchResult
 from app.services.embedding_service import EmbeddingService
+from app.services.matching_service import MatchingService
 
 
 @dataclass(frozen=True)
@@ -37,15 +39,21 @@ class SemanticSearchService:
     async def search(self, organization_id: UUID, payload: SemanticSearchRequest) -> list[CandidateSearchResult]:
         if self.db is None:
             raise RuntimeError("Candidate-level semantic search requires a database session")
-        hits = EmbeddingService().candidate_search(
-            organization_id=organization_id,
-            query=payload.query,
-            limit=min(payload.limit * 5 + payload.offset, 100),
-            skills=payload.skills,
-        )
+        await self._ensure_job_context(organization_id, payload.job_description_id)
+        try:
+            hits = EmbeddingService().candidate_search(
+                organization_id=organization_id,
+                query=payload.query,
+                limit=min(payload.limit * 5 + payload.offset, 100),
+                skills=payload.skills,
+            )
+        except Exception:
+            hits = []
         aggregated = self._aggregate_hits(hits, payload)
-        candidate_ids = list(aggregated.keys())[payload.offset : payload.offset + payload.limit]
         repository = CandidateRepository(self.db)
+        if not aggregated:
+            aggregated = await self._database_fallback(repository, organization_id, payload)
+        candidate_ids = list(aggregated.keys())[payload.offset : payload.offset + payload.limit]
         results: list[CandidateSearchResult] = []
         for candidate_id in candidate_ids:
             candidate = await repository.get_for_org(candidate_id, organization_id)
@@ -81,6 +89,56 @@ class SemanticSearchService:
             key=lambda item: (item.ats_alignment or 0, item.semantic_score, item.experience_fit or 0),
             reverse=True,
         )
+
+    async def _ensure_job_context(self, organization_id: UUID, job_id: UUID | None) -> None:
+        if job_id is None or self.db is None:
+            return
+        existing = await self.db.scalar(
+            select(CandidateMatch.id).where(
+                CandidateMatch.organization_id == organization_id,
+                CandidateMatch.job_description_id == job_id,
+            ).limit(1)
+        )
+        if existing is not None:
+            return
+        job = await JobDescriptionRepository(self.db).get_for_org(job_id, organization_id)
+        if job is not None:
+            await MatchingService(self.db).rank_candidates(organization_id, job, limit=100)
+
+    async def _database_fallback(
+        self,
+        repository: CandidateRepository,
+        organization_id: UUID,
+        payload: SemanticSearchRequest,
+    ) -> dict[UUID, dict[str, Any]]:
+        candidates = await repository.list_for_org(organization_id, limit=min(payload.limit * 5 + payload.offset, 100))
+        terms = {term.lower() for term in payload.query.split() if len(term) > 2}
+        fallback: dict[UUID, dict[str, Any]] = {}
+        for candidate in candidates:
+            resume = await repository.latest_resume(candidate.id)
+            skills = await repository.skills_for_candidate(candidate.id)
+            text = " ".join(
+                [
+                    candidate.full_name or "",
+                    candidate.headline or "",
+                    candidate.summary or "",
+                    " ".join(skills),
+                    (resume.extracted_text if resume else "") or "",
+                ]
+            ).lower()
+            score = sum(1 for term in terms if term in text) * 12.5
+            match = await self._job_match(candidate.id, payload.job_description_id)
+            if match:
+                score = max(score, float(match.semantic_score), float(match.overall_score) * 0.6)
+            if payload.skills and not set(payload.skills) & set(skills):
+                continue
+            if score > 0 or match:
+                fallback[candidate.id] = {
+                    "score": min(100.0, score),
+                    "snippets": [((resume.extracted_text if resume else "") or candidate.summary or "")[:220]],
+                    "payload": {"candidate_id": str(candidate.id)},
+                }
+        return dict(sorted(fallback.items(), key=lambda item: item[1]["score"], reverse=True))
 
     def raw_chunk_search(self, organization_id: UUID, payload: SemanticSearchRequest) -> list[SemanticSearchResult]:
         hits = EmbeddingService().candidate_search(
