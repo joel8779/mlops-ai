@@ -33,26 +33,26 @@ export default function SignUpPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-md border border-slate-200 bg-white p-6">
-        <h1 className="text-xl font-semibold">Create account</h1>
-        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+    <main className="flex min-h-screen items-center justify-center bg-background p-6">
+      <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-xl border border-background-border bg-background-card p-6">
+        <h1 className="text-xl font-semibold text-foreground">Create account</h1>
+        {error && <p className="mt-2 text-sm text-error">{error}</p>}
         <input
-          className="mt-4 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none"
+          className="mt-4 w-full rounded-lg border border-background-border bg-background-elevated px-4 py-3 text-sm text-foreground outline-none focus:border-accent/50 transition-colors"
           placeholder="Organization name"
           value={formData.organization_name}
           onChange={(e) => setFormData({ ...formData, organization_name: e.target.value })}
           required
         />
         <input
-          className="mt-3 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none"
+          className="mt-3 w-full rounded-lg border border-background-border bg-background-elevated px-4 py-3 text-sm text-foreground outline-none focus:border-accent/50 transition-colors"
           placeholder="Full name"
           value={formData.full_name}
           onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
           required
         />
         <input
-          className="mt-3 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none"
+          className="mt-3 w-full rounded-lg border border-background-border bg-background-elevated px-4 py-3 text-sm text-foreground outline-none focus:border-accent/50 transition-colors"
           placeholder="Email"
           type="email"
           value={formData.email}
@@ -60,19 +60,19 @@ export default function SignUpPage() {
           required
         />
         <input
-          className="mt-3 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none"
+          className="mt-3 w-full rounded-lg border border-background-border bg-background-elevated px-4 py-3 text-sm text-foreground outline-none focus:border-accent/50 transition-colors"
           placeholder="Password"
           type="password"
           value={formData.password}
           onChange={(e) => setFormData({ ...formData, password: e.target.value })}
           required
         />
-        <Button className="mt-4 w-full" disabled={loading}>
+        <Button className="mt-4 w-full bg-accent hover:bg-accent/90" disabled={loading}>
           {loading ? "Creating account..." : "Sign up"}
         </Button>
-        <p className="mt-4 text-center text-sm text-slate-600">
+        <p className="mt-4 text-center text-sm text-foreground-muted">
           Already have an account?{" "}
-          <a href="/sign-in" className="text-blue-600 hover:underline">
+          <a href="/sign-in" className="text-accent hover:underline">
             Sign in
           </a>
         </p>

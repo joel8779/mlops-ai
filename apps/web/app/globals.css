@@ -3,21 +3,42 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 body {
-  background: #f5f7fa;
-  color: #17202a;
+  background: #000000;
+  color: #ffffff;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-.dark body {
-  background: #0f172a;
-  color: #e2e8f0;
-}
-
-@keyframes shimmer {
-  100% {
-    transform: translateX(100%);
+@layer utilities {
+  .text-accent {
+    color: #3b82f6;
   }
+  
+  .bg-accent {
+    background-color: #3b82f6;
+  }
+  
+  .border-accent {
+    border-color: #3b82f6;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
 }
