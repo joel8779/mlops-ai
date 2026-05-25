@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { resumesApi } from "@/lib/api";
 import { fadeInUp } from "@/lib/animations";
 
-type UploadStatus = "idle" | "uploading" | "processing" | "complete" | "error";
+type UploadStatus = "idle" | "uploading" | "complete" | "error";
 
 export default function ResumeUploadPage() {
   const { user, logout } = useAuth();
@@ -37,40 +37,12 @@ export default function ResumeUploadPage() {
     if (!file) return;
 
     setStatus("uploading");
-    setProgress(0);
     setError("");
 
     try {
-      // Simulate upload progress
-      const uploadInterval = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 30) {
-            clearInterval(uploadInterval);
-            return 30;
-          }
-          return prev + 10;
-        });
-      }, 200);
-
       const result = await resumesApi.upload(file);
-      clearInterval(uploadInterval);
-
-      setStatus("processing");
-      setProgress(30);
-
-      // Simulate processing progress
-      const processInterval = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 100) {
-            clearInterval(processInterval);
-            setStatus("complete");
-            return 100;
-          }
-          return prev + 15;
-        });
-      }, 500);
-
       setUploadResult(result);
+      setStatus("complete");
     } catch (err: any) {
       setStatus("error");
       setError(err.message || "Failed to upload resume");
@@ -203,13 +175,6 @@ export default function ResumeUploadPage() {
                     <>
                       <Loader2 className="animate-spin text-accent" size={32} />
                       <span className="mt-3 text-sm font-medium text-foreground">Uploading...</span>
-                      <span className="mt-1 text-xs text-foreground-muted">{progress}% complete</span>
-                    </>
-                  ) : status === "processing" ? (
-                    <>
-                      <Loader2 className="animate-spin text-accent" size={32} />
-                      <span className="mt-3 text-sm font-medium text-foreground">Processing with AI...</span>
-                      <span className="mt-1 text-xs text-foreground-muted">{progress}% complete</span>
                     </>
                   ) : status === "error" ? (
                     <>
@@ -236,30 +201,6 @@ export default function ResumeUploadPage() {
                   </div>
                 )}
 
-                {status === "processing" && (
-                  <div className="mt-4 space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-foreground-muted">Upload</span>
-                      <span className="text-success">✓ Complete</span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-foreground-muted">OCR Extraction</span>
-                      {progress >= 40 ? <span className="text-success">✓ Complete</span> : <Loader2 className="animate-spin" size={14} />}
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-foreground-muted">Text Parsing</span>
-                      {progress >= 60 ? <span className="text-success">✓ Complete</span> : <Loader2 className="animate-spin" size={14} />}
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-foreground-muted">Skill Extraction</span>
-                      {progress >= 80 ? <span className="text-success">✓ Complete</span> : <Loader2 className="animate-spin" size={14} />}
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-foreground-muted">Embedding Generation</span>
-                      {progress >= 100 ? <span className="text-success">✓ Complete</span> : <Loader2 className="animate-spin" size={14} />}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </motion.div>

@@ -41,7 +41,7 @@ interface Message {
 
 export default function CopilotPage() {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
+  const { user, logout } = useAuth();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
@@ -63,11 +63,6 @@ export default function CopilotPage() {
     scrollToBottom();
   }, [messages]);
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/sign-in");
-    }
-  }, [authLoading, user, router]);
 
   const simulateStreaming = async (content: string) => {
     const words = content.split(" ");
@@ -162,17 +157,6 @@ export default function CopilotPage() {
     { icon: Settings, label: "Settings", href: "/settings", active: false },
   ];
 
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-          className="h-12 w-12 rounded-full border-4 border-accent border-t-transparent"
-        />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">

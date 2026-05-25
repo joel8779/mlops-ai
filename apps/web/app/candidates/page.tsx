@@ -30,18 +30,12 @@ import { useAuth } from "@/lib/auth-context";
 
 export default function CandidatesPage() {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
+  const { user, logout } = useAuth();
   const [candidates, setCandidates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/sign-in");
-    }
-  }, [authLoading, user, router]);
 
   const loadCandidates = async () => {
     setLoading(true);
@@ -56,10 +50,8 @@ export default function CandidatesPage() {
   };
 
   useEffect(() => {
-    if (user) {
-      loadCandidates();
-    }
-  }, [user]);
+    loadCandidates();
+  }, []);
 
   const recordFeedback = async (candidateId: string, action: string) => {
     setSavingId(candidateId);
@@ -83,17 +75,6 @@ export default function CandidatesPage() {
     { icon: Settings, label: "Settings", href: "/settings", active: false },
   ];
 
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-          className="h-12 w-12 rounded-full border-4 border-accent border-t-transparent"
-        />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">

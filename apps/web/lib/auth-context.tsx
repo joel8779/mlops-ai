@@ -26,13 +26,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is logged in on mount
-    const token = getAccessToken();
-    if (token) {
-      refreshUser();
-    } else {
-      setLoading(false);
-    }
+    let mounted = true;
+
+    const initAuth = async () => {
+      const token = getAccessToken();
+      if (token && mounted) {
+        try {
+          await refreshUser();
+        } catch (error) {
+          console.error("Failed to fetch user:", error);
+          clearTokens();
+          setUser(null);
+        }
+      }
+      if (mounted) {
+        setLoading(false);
+      }
+    };
+
+    initAuth();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const refreshUser = async () => {

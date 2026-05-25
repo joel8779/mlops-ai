@@ -33,7 +33,7 @@ import Link from "next/link";
 
 export default function SearchPage() {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
+  const { user, logout } = useAuth();
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any[]>([]);
@@ -44,12 +44,6 @@ export default function SearchPage() {
   });
   const [showFilters, setShowFilters] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/sign-in");
-    }
-  }, [authLoading, user, router]);
 
   const handleSearch = async () => {
     if (!query.trim()) return;
@@ -88,17 +82,6 @@ export default function SearchPage() {
     "React developers with TypeScript experience",
   ];
 
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-          className="h-12 w-12 rounded-full border-4 border-accent border-t-transparent"
-        />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
