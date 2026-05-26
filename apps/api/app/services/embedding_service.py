@@ -289,6 +289,7 @@ class EmbeddingService:
             self.client.delete(
                 collection_name=settings.qdrant_collection,
                 points_selector=PointIdsList(points=point_ids),
+                wait=True,
             )
 
     def delete_job_points(self, point_ids: list[str]) -> None:
@@ -296,4 +297,5 @@ class EmbeddingService:
             self.client.delete(
                 collection_name=settings.qdrant_job_collection,
                 points_selector=PointIdsList(points=point_ids),
+                wait=True,
             )

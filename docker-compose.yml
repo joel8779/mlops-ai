@@ -98,7 +98,7 @@ services:
   api:
     build:
       context: ./apps/api
-    command: uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --reload
+    command: /bin/sh -c "alembic upgrade head && uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --reload"
     env_file:
       - .env
     environment:
@@ -126,10 +126,11 @@ services:
       minio-init:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/ready"]
       interval: 15s
       timeout: 5s
       retries: 5
+      start_period: 30s
     networks:
       - resume_net
 

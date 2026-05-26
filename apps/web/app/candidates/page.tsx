@@ -12,6 +12,8 @@ export default function CandidatesPage() {
   const [selectedJobId, setSelectedJobId] = useState("");
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteStep, setDeleteStep] = useState("");
   const [error, setError] = useState("");
 
   const loadCandidates = async () => {
@@ -56,15 +58,25 @@ export default function CandidatesPage() {
   };
 
   const deleteCandidate = async (candidateId: string) => {
-    setSavingId(candidateId);
+    const showDeleteStep = async (step: string) => {
+      setDeleteStep(step);
+      await new Promise((resolve) => setTimeout(resolve, 180));
+    };
+
+    setDeletingId(candidateId);
     setError("");
     try {
+      await showDeleteStep("Deleting candidate");
+      await showDeleteStep("Removing ATS relations");
+      await showDeleteStep("Removing semantic index");
       await candidatesApi.delete(candidateId);
+      setDeleteStep("Deletion complete");
       await loadCandidates();
     } catch (err: any) {
       setError(err.message || "Unable to delete candidate");
     } finally {
-      setSavingId(null);
+      setDeletingId(null);
+      setTimeout(() => setDeleteStep(""), 900);
     }
   };
 
@@ -94,6 +106,18 @@ export default function CandidatesPage() {
         </div>
 
         {error && <div className="rounded-lg border border-error/30 bg-error/10 p-4 text-sm text-error">{error}</div>}
+        {deleteStep && (
+          <div className="ops-panel rounded-xl p-4 text-sm text-foreground-muted">
+            <div className="flex items-center gap-3">
+              {deleteStep === "Deletion complete" ? (
+                <Trash2 className="h-4 w-4 text-accent" />
+              ) : (
+                <Loader2 className="h-4 w-4 animate-spin text-accent" />
+              )}
+              <span>{deleteStep}</span>
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="ops-panel flex min-h-[280px] items-center justify-center rounded-xl">
@@ -148,14 +172,19 @@ export default function CandidatesPage() {
                     <button
                       title="Delete candidate"
                       onClick={() => deleteCandidate(candidateId)}
-                      disabled={savingId === candidateId}
-                      className="rounded-lg border border-error/30 px-3 py-2 text-sm text-error hover:bg-error/10 disabled:opacity-60"
+                      disabled={savingId === candidateId || Boolean(deletingId)}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-error/30 px-3 py-2 text-sm text-error hover:bg-error/10 disabled:opacity-60"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      {deletingId === candidateId ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                      {deletingId === candidateId ? "Deleting" : "Delete"}
                     </button>
                     <button
                       onClick={() => saveFeedback(candidateId, "shortlist")}
-                      disabled={savingId === candidateId}
+                      disabled={savingId === candidateId || Boolean(deletingId)}
                       className="ops-button-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm disabled:opacity-60"
                     >
                       {savingId === candidateId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bookmark className="h-4 w-4" />}

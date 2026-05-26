@@ -9,6 +9,9 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 from starlette.responses import JSONResponse
+from sqlalchemy import text
+import redis.asyncio as redis
+import httpx
 
 try:
     from prometheus_fastapi_instrumentator import Instrumentator
@@ -20,7 +23,9 @@ from app.core.config import settings
 from app.core.dependency_guard import assert_core_dependency_runtime
 from app.core.exceptions import install_exception_handlers
 from app.logging import configure_logging, get_logger
-from app.db.database import check_database, close_database
+from app.db.database import close_database
+from app.db.schema_validation import get_runtime_schema_report, validate_runtime_schema
+from app.db.session import engine
 from app.middleware.request_context import RequestContextMiddleware
 from app.middleware.security import SecurityHeadersMiddleware
 from app.middleware.tenant import TenantContextMiddleware
@@ -46,6 +51,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         "core_dependency_runtime_validated",
         dependencies={result.name: result.installed_version for result in dependency_results},
     )
+    schema_report = await validate_runtime_schema()
+    if schema_report.ready:
+        logger.info("runtime_schema_validated")
+    else:
+        logger.warning("runtime_schema_drift_detected", schema=schema_report.model_dump())
     try:
         yield
     except (asyncio.CancelledError, KeyboardInterrupt):
@@ -115,15 +125,15 @@ def create_app() -> FastAPI:
 
     @app.get("/health", response_model=HealthResponse, tags=["system"])
     async def health() -> HealthResponse:
-        """Health check endpoint - verifies service health."""
-        await check_database()
+        """Liveness check: process is up and able to serve HTTP."""
         return HealthResponse(status="ok", service=settings.app_name, version=settings.app_version)
 
-    @app.get("/ready", response_model=HealthResponse, tags=["system"])
-    async def ready() -> HealthResponse:
-        """Readiness check endpoint - Kubernetes ready probe."""
-        await check_database()
-        return HealthResponse(status="ready", service=settings.app_name, version=settings.app_version)
+    @app.get("/ready", tags=["system"])
+    async def ready() -> JSONResponse:
+        """Readiness check: dependencies and schema are ready for workflows."""
+        payload = await _readiness_payload()
+        status_code = 200 if payload["status"] == "ready" else 503
+        return JSONResponse(status_code=status_code, content=payload)
 
     @app.get("/live", response_model=HealthResponse, tags=["system"])
     async def live() -> HealthResponse:
@@ -134,6 +144,61 @@ def create_app() -> FastAPI:
     if Instrumentator is not None:
         Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
     return app
+
+
+async def _readiness_payload() -> dict:
+    dependencies: dict[str, dict] = {}
+    status = "ready"
+
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+        dependencies["postgres"] = {"status": "healthy"}
+    except Exception as exc:
+        status = "not_ready"
+        dependencies["postgres"] = {"status": "unhealthy", "error": str(exc)}
+
+    try:
+        redis_client = redis.from_url(settings.redis_url)
+        await redis_client.ping()
+        await redis_client.aclose()
+        dependencies["redis"] = {"status": "healthy"}
+    except Exception as exc:
+        status = "not_ready"
+        dependencies["redis"] = {"status": "unhealthy", "error": str(exc)}
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{str(settings.qdrant_url).rstrip('/')}/healthz")
+        if response.status_code == 200:
+            dependencies["qdrant"] = {"status": "healthy"}
+        else:
+            status = "not_ready"
+            dependencies["qdrant"] = {"status": "unhealthy", "status_code": response.status_code}
+    except Exception as exc:
+        status = "not_ready"
+        dependencies["qdrant"] = {"status": "unhealthy", "error": str(exc)}
+
+    try:
+        schema_report = await get_runtime_schema_report()
+        dependencies["schema"] = schema_report.model_dump()
+        if schema_report.status == "drift_detected":
+            status = "not_ready"
+    except Exception as exc:
+        status = "not_ready"
+        dependencies["schema"] = {"status": "unhealthy", "error": str(exc)}
+
+    dependencies["gemini"] = {
+        "status": "configured" if settings.llm_provider == "disabled" or settings.gemini_api_key else "degraded",
+        "provider": settings.llm_provider,
+    }
+
+    return {
+        "status": status,
+        "service": settings.app_name,
+        "version": settings.app_version,
+        "dependencies": dependencies,
+    }
 
 
 app = create_app()

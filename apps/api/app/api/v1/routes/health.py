@@ -1,13 +1,13 @@
 """Health check endpoints for infrastructure validation."""
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Response
 from sqlalchemy import text
 import redis.asyncio as redis
 import httpx
 from datetime import datetime
 
 from app.core.config import settings
-from app.db.session import async_session_maker, async_engine
+from app.db.schema_validation import get_runtime_schema_report
+from app.db.session import async_engine
 
 router = APIRouter()
 
@@ -23,7 +23,7 @@ async def health_check():
 
 
 @router.get("/ready")
-async def readiness_check():
+async def readiness_check(response: Response):
     """Readiness check - validates all dependencies are ready."""
     health_status = {
         "status": "ready",
@@ -64,6 +64,18 @@ async def readiness_check():
     except Exception as e:
         health_status["status"] = "not_ready"
         health_status["dependencies"]["qdrant"] = f"unhealthy: {str(e)}"
+
+    try:
+        schema_report = await get_runtime_schema_report()
+        health_status["dependencies"]["schema"] = schema_report.model_dump()
+        if schema_report.status == "drift_detected":
+            health_status["status"] = "not_ready"
+    except Exception as e:
+        health_status["status"] = "not_ready"
+        health_status["dependencies"]["schema"] = f"unhealthy: {str(e)}"
+
+    if health_status["status"] != "ready":
+        response.status_code = 503
     
     return health_status
 

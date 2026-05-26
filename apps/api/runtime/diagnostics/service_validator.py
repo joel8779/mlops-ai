@@ -2,6 +2,7 @@
 
 import asyncio
 import httpx
+from sqlalchemy import text
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -92,7 +93,7 @@ class ServiceValidator:
         start = asyncio.get_event_loop().time()
         try:
             async with AsyncSessionLocal() as db:
-                await db.execute("SELECT 1")
+                await db.execute(text("SELECT 1"))
             latency = (asyncio.get_event_loop().time() - start) * 1000
             return ServiceCheck(
                 name="database",

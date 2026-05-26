@@ -21,7 +21,7 @@ services:
       dockerfile: Dockerfile
     image: resume-intelligence-api:prod
     restart: unless-stopped
-    command: uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --workers 4
+    command: /bin/sh -c "alembic upgrade head && uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --workers 4"
     <<: *api-env
     ports:
       - "8000:8000"

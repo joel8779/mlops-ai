@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     environment: Literal["local", "test", "staging", "production"] = "local"
     debug: bool = False
+    runtime_schema_strict: bool = False
     log_level: str = "INFO"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
@@ -169,6 +170,18 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def parse_debug_flag(cls, value: str | bool) -> bool:
+        if isinstance(value, bool):
+            return value
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on", "debug", "development", "local"}:
+            return True
+        if normalized in {"0", "false", "no", "off", "release", "staging", "production"}:
+            return False
+        return bool(value)
 
     @property
     def is_production(self) -> bool:

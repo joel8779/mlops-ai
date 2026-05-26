@@ -1,7 +1,8 @@
+import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.domain import (
@@ -23,18 +24,28 @@ from app.models.domain import (
 from app.services.embedding_service import EmbeddingService
 from app.services.storage import ObjectStorage
 
+logger = logging.getLogger(__name__)
+
 
 class DeleteWorkflowService:
-    def __init__(self, db: AsyncSession, storage: ObjectStorage | None = None) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        storage: ObjectStorage | None = None,
+        embedding_service: EmbeddingService | None = None,
+    ) -> None:
         self.db = db
         self.storage = storage or ObjectStorage()
+        self.embedding_service = embedding_service or EmbeddingService()
+        self._column_cache: dict[str, set[str]] = {}
 
     async def delete_resume(self, resume: Resume) -> None:
         now = datetime.now(timezone.utc)
         point_ids = await self._candidate_point_ids(resume_id=resume.id)
-        EmbeddingService().delete_candidate_points(point_ids)
+        self.embedding_service.delete_candidate_points(point_ids)
         await self.db.execute(delete(CandidateEmbedding).where(CandidateEmbedding.resume_id == resume.id))
-        await self.db.execute(delete(ATSScore).where(ATSScore.resume_id == resume.id))
+        if await self._table_has_column("ats_scores", "resume_id"):
+            await self.db.execute(delete(ATSScore).where(ATSScore.resume_id == resume.id))
         await self.db.execute(delete(ResumeProcessingEvent).where(ResumeProcessingEvent.resume_id == resume.id))
         try:
             self.storage.delete_object(resume.storage_key)
@@ -47,23 +58,33 @@ class DeleteWorkflowService:
         now = datetime.now(timezone.utc)
         point_ids = await self._candidate_point_ids(candidate_id=candidate.id)
         resumes = list(
-            await self.db.scalars(select(Resume).where(Resume.candidate_id == candidate.id, Resume.deleted_at.is_(None)))
+            await self.db.scalars(
+                select(Resume).where(
+                    Resume.candidate_id == candidate.id,
+                    Resume.deleted_at.is_(None),
+                )
+            )
         )
         storage_keys = [resume.storage_key for resume in resumes]
+        resume_ids = [resume.id for resume in resumes]
         try:
-            await self.db.execute(delete(ATSScore).where(ATSScore.candidate_id == candidate.id))
+            self.embedding_service.delete_candidate_points(point_ids)
+            await self._delete_candidate_ats_scores(candidate.id, resume_ids)
             await self.db.execute(delete(CandidateMatch).where(CandidateMatch.candidate_id == candidate.id))
-            await self.db.execute(delete(CandidatePipelineStage).where(CandidatePipelineStage.candidate_id == candidate.id))
+            await self.db.execute(
+                delete(CandidatePipelineStage).where(CandidatePipelineStage.candidate_id == candidate.id)
+            )
             await self.db.execute(delete(CandidateBookmark).where(CandidateBookmark.candidate_id == candidate.id))
             await self.db.execute(delete(RecruiterNote).where(RecruiterNote.candidate_id == candidate.id))
             await self.db.execute(delete(RankingFeedback).where(RankingFeedback.candidate_id == candidate.id))
             await self.db.execute(delete(CandidateSkill).where(CandidateSkill.candidate_id == candidate.id))
             await self.db.execute(delete(CandidateEmbedding).where(CandidateEmbedding.candidate_id == candidate.id))
-            await self.db.execute(
-                delete(ResumeProcessingEvent).where(
-                    ResumeProcessingEvent.resume_id.in_([resume.id for resume in resumes])
+            if resume_ids:
+                await self.db.execute(
+                    delete(ResumeProcessingEvent).where(
+                        ResumeProcessingEvent.resume_id.in_(resume_ids)
+                    )
                 )
-            )
             await self.db.execute(
                 update(RecruiterActivity)
                 .where(RecruiterActivity.candidate_id == candidate.id)
@@ -83,21 +104,26 @@ class DeleteWorkflowService:
                     "status": "db_complete",
                     "resume_count": len(resumes),
                     "candidate_vector_count": len(point_ids),
+                    "ats_relations_removed": True,
+                    "semantic_index_removed": True,
                 },
             }
+            await self.db.flush()
             await self.db.commit()
         except Exception:
             await self.db.rollback()
             raise
 
-        self._delete_candidate_vectors_best_effort(candidate, point_ids)
         self._delete_storage_best_effort(candidate, storage_keys)
 
     async def delete_job(self, job: JobDescription) -> None:
         point_ids = await self._job_point_ids(job.id)
-        EmbeddingService().delete_job_points(point_ids)
-        await self.db.execute(delete(JobDescriptionEmbedding).where(JobDescriptionEmbedding.job_description_id == job.id))
-        await self.db.execute(delete(ATSScore).where(ATSScore.job_description_id == job.id))
+        self.embedding_service.delete_job_points(point_ids)
+        await self.db.execute(
+            delete(JobDescriptionEmbedding).where(JobDescriptionEmbedding.job_description_id == job.id)
+        )
+        if await self._table_has_column("ats_scores", "job_description_id"):
+            await self.db.execute(delete(ATSScore).where(ATSScore.job_description_id == job.id))
         await self.db.execute(delete(CandidateMatch).where(CandidateMatch.job_description_id == job.id))
         await self.db.execute(delete(CandidatePipelineStage).where(CandidatePipelineStage.job_description_id == job.id))
         await self.db.execute(delete(RankingFeedback).where(RankingFeedback.job_description_id == job.id))
@@ -124,18 +150,31 @@ class DeleteWorkflowService:
         )
         return [row[0] for row in result.all()]
 
-    def _delete_candidate_vectors_best_effort(self, candidate: Candidate, point_ids: list[str]) -> None:
-        try:
-            EmbeddingService().delete_candidate_points(point_ids)
-        except Exception as exc:
-            candidate.raw_profile = {
-                **(candidate.raw_profile or {}),
-                "delete_vector_warning": {
-                    "status": "qdrant_delete_failed",
-                    "point_count": len(point_ids),
-                    "error": str(exc),
-                },
-            }
+    async def _delete_candidate_ats_scores(self, candidate_id: UUID, resume_ids: list[UUID]) -> None:
+        if await self._table_has_column("ats_scores", "candidate_id"):
+            await self.db.execute(delete(ATSScore).where(ATSScore.candidate_id == candidate_id))
+            return
+        if resume_ids and await self._table_has_column("ats_scores", "resume_id"):
+            await self.db.execute(delete(ATSScore).where(ATSScore.resume_id.in_(resume_ids)))
+
+    async def _table_has_column(self, table_name: str, column_name: str) -> bool:
+        bind = self.db.get_bind()
+        if bind is not None and bind.dialect.name != "postgresql":
+            table = Candidate.__table__.metadata.tables.get(table_name)
+            return table is None or column_name in table.columns
+        if table_name not in self._column_cache:
+            result = await self.db.execute(
+                text(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = :table_name
+                    """
+                ),
+                {"table_name": table_name},
+            )
+            self._column_cache[table_name] = {str(row[0]) for row in result.all()}
+        return column_name in self._column_cache[table_name]
 
     def _delete_storage_best_effort(self, candidate: Candidate, storage_keys: list[str]) -> None:
         failures: list[dict] = []
@@ -145,7 +184,7 @@ class DeleteWorkflowService:
             except Exception as exc:
                 failures.append({"storage_key": key, "error": str(exc)})
         if failures:
-            candidate.raw_profile = {
-                **(candidate.raw_profile or {}),
-                "delete_storage_warning": failures[:10],
-            }
+            logger.warning(
+                "Candidate storage cleanup failed",
+                extra={"candidate_id": str(candidate.id), "failures": failures[:10]},
+            )
