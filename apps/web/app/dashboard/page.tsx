@@ -99,7 +99,7 @@ export default function DashboardPage() {
   };
 
   const counts = activation?.counts || {};
-  const pipeline = activation?.pipeline || {};
+  const pipeline = analytics?.pipeline_stage_counts || activation?.pipeline || {};
   const activity = activation?.activity || [];
   const insights = activation?.match_insights || [];
   const metrics = [
@@ -129,10 +129,6 @@ export default function DashboardPage() {
                 <UploadCloud className="h-4 w-4" />
                 Upload resumes
               </Link>
-              <button onClick={loadDemo} disabled={demoLoading} className="ops-button-secondary inline-flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm disabled:opacity-60">
-                {demoLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
-                Load demo workspace
-              </button>
             </div>
           </div>
         </section>
@@ -156,10 +152,6 @@ export default function DashboardPage() {
                   <UploadCloud className="h-4 w-4" />
                   Upload resumes
                 </Link>
-                <button onClick={loadDemo} disabled={demoLoading} className="ops-button-secondary inline-flex items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm disabled:opacity-60">
-                  {demoLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
-                  Load demo workspace
-                </button>
               </div>
             </div>
           </section>

@@ -154,7 +154,8 @@ async def _repair_candidate_identity(db: AsyncSession, repository: CandidateRepo
     candidate.phone = candidate.phone or extraction.phone
     candidate.summary = candidate.summary or extraction.summary
     if not candidate.headline and extraction.skills:
-        candidate.headline = f"{(extraction.inferred_seniority or 'qualified').title()} candidate with {', '.join(extraction.skills[:3])}"
+        seniority_label = extraction.inferred_seniority or "experience level unavailable"
+        candidate.headline = f"{seniority_label.title()} candidate with {', '.join(extraction.skills[:3])}"
     candidate.raw_profile = {
         **(candidate.raw_profile or {}),
         "identity_repair": {

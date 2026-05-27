@@ -39,13 +39,15 @@ class JobIntelligenceService:
         payload: JobDescriptionCreate,
         source: str = "raw_text",
     ) -> JobDescription:
+        if not payload.title or not payload.title.strip():
+            raise AppError("Job title is required. Please provide a title for the job description.")
         parsed = self.parse(payload.description)
         semantic_requirements = self.semantic_requirements(payload.description, parsed)
         job = JobDescription(
             organization_id=auth.organization_id,
             owner_id=auth.user_id,
             created_by_user_id=auth.user_id,
-            title=payload.title,
+            title=payload.title.strip(),
             description=payload.description,
             status=payload.status,
             role_category=parsed.role_category,
@@ -98,6 +100,8 @@ class JobIntelligenceService:
 
     async def create_from_upload(self, auth: AuthContext, title: str | None, upload: UploadFile) -> JobDescription:
         preview = await self.preview_upload(upload, title)
+        if not preview.title:
+            raise AppError("Could not extract a job title from the uploaded file. Please provide a title manually.")
         return await self.create_from_text(
             auth,
             JobDescriptionCreate(title=preview.title, description=preview.description),
@@ -147,7 +151,7 @@ class JobIntelligenceService:
                 "summary": parsed.summary,
                 "preferred_skills": parsed.preferred_skills,
             },
-            warnings=[] if inferred_title != "Untitled Role" else ["Could not confidently infer a job title."],
+            warnings=[] if inferred_title else ["Could not confidently infer a job title."],
         )
 
     async def index_job(self, job_id: UUID) -> None:
@@ -191,10 +195,12 @@ class JobIntelligenceService:
         await self.db.commit()
 
     def parse(self, text: str) -> JobParseResult:
-        normalized = text.lower()
+        # Preprocess text to remove noise
+        cleaned_text = self._preprocess_jd(text)
+        normalized = cleaned_text.lower()
         skills = sorted({skill for skill in SKILL_TERMS if skill in normalized})
-        preferred_skills = self._skills_near(text, ["preferred", "nice to have", "bonus", "plus"])
-        required_skills = self._skills_near(text, ["required", "must", "requirements", "need", "responsibilities"]) or skills
+        preferred_skills = self._skills_near(cleaned_text, ["preferred", "nice to have", "bonus", "plus"])
+        required_skills = self._skills_near(cleaned_text, ["required", "must", "requirements", "need", "responsibilities"]) or skills
         years = [int(match) for match in re.findall(r"(\d+)\+?\s*(?:years|yrs)", normalized)]
         education = sorted({term for term in EDUCATION_TERMS if term in normalized})
         tokens = re.findall(r"[a-zA-Z][a-zA-Z0-9\.\+#-]{2,}", normalized)
@@ -211,7 +217,7 @@ class JobIntelligenceService:
             keywords=keywords,
             role_category=role_category,
             seniority=seniority,
-            summary=self._summary(text, required_skills, seniority),
+            summary=self._summary(cleaned_text, required_skills, seniority),
         )
 
     def infer_title(self, text: str, metadata: dict | None = None) -> str:
@@ -236,7 +242,21 @@ class JobIntelligenceService:
         category = self._category(text.lower())
         if category:
             return category.replace("_", " ").title()
-        return "Untitled Role"
+        # Derive from filename if available
+        filename = str(metadata.get("filename", "")).strip()
+        if filename:
+            # Remove file extension and common suffixes
+            clean_name = re.sub(r"\.(pdf|docx|doc|txt)$", "", filename, flags=re.IGNORECASE)
+            clean_name = re.sub(r"(?i)\b(job|description|jd|position|role|posting)\b", "", clean_name)
+            clean_name = clean_name.strip(" -_")
+            if clean_name and len(clean_name) >= 3:
+                return clean_name[:255]
+        # Last resort: use first meaningful line
+        for line in lines[:5]:
+            if len(line) >= 5 and len(line) <= 100:
+                return line[:255]
+        # If no title can be inferred, return empty string to trigger explicit error
+        return ""
 
     @staticmethod
     def semantic_requirements(text: str, parsed: JobParseResult) -> list[str]:
@@ -318,3 +338,68 @@ class JobIntelligenceService:
         if any(term in text for term in ["devops", "platform", "kubernetes"]):
             return "platform_engineering"
         return None
+
+    @staticmethod
+    def _preprocess_jd(text: str) -> str:
+        """Remove noise from JD text before parsing and embedding."""
+        lines = text.splitlines()
+        cleaned_lines = []
+        skip_section = False
+        skip_patterns = [
+            r"(?i)^(copyright|©|all rights reserved)",
+            r"(?i)^(disclaimer|confidential|proprietary)",
+            r"(?i)^(troubleshooting|support|help|faq)",
+            r"(?i)^(instructions|guidance|guidelines)",
+            r"(?i)^(do not|don't|please note)",
+            r"(?i)^(assessment logistics|test instructions)",
+            r"(?i)^(contact us|support contact|email us)",
+            r"(?i)^(browser requirements|system requirements)",
+            r"(?i)^(malpractice|legal|terms of service)",
+        ]
+        keep_patterns = [
+            r"(?i)(job|role|position|title)",
+            r"(?i)(responsibilities|duties|what you'll do)",
+            r"(?i)(requirements|qualifications|what we're looking for)",
+            r"(?i)(skills|technologies|stack)",
+            r"(?i)(experience|years)",
+            r"(?i)(education|degree)",
+            r"(?i)(benefits|perks)",
+        ]
+        
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            
+            # Check if we should skip this section
+            if any(re.match(pattern, stripped) for pattern in skip_patterns):
+                skip_section = True
+                continue
+            
+            # Check if we should keep this line
+            if skip_section:
+                # Exit skip section if we hit a keep pattern
+                if any(re.search(pattern, stripped) for pattern in keep_patterns):
+                    skip_section = False
+                    cleaned_lines.append(stripped)
+                continue
+            
+            # Remove repeated boilerplate
+            if len(stripped) < 10:
+                continue
+            
+            # Remove lines that are mostly boilerplate
+            if stripped.count(" ") > len(stripped) * 0.8:
+                continue
+            
+            cleaned_lines.append(stripped)
+        
+        # Remove duplicate lines
+        seen = set()
+        unique_lines = []
+        for line in cleaned_lines:
+            if line.lower() not in seen:
+                seen.add(line.lower())
+                unique_lines.append(line)
+        
+        return "\n".join(unique_lines)

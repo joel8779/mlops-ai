@@ -6,10 +6,13 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.logging import get_logger
 from app.models.domain import Candidate, CandidateMatch, CandidatePipelineStage, JobDescription, PipelineStage, Resume
 from app.repositories.candidates import CandidateRepository
 from app.schemas.matching import CandidateMatchRead, MatchingWeights
 from app.services.embedding_service import EmbeddingService
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -45,7 +48,14 @@ class MatchingService:
         )
         try:
             semantic_hits = EmbeddingService().semantic_search(organization_id, owner_id, job.description, limit=limit * 3)
-        except Exception:
+        except Exception as exc:
+            logger.exception(
+                "semantic_search_failed",
+                organization_id=str(organization_id),
+                owner_id=str(owner_id),
+                job_id=str(job.id),
+                error=str(exc),
+            )
             semantic_hits = []
         semantic_by_candidate = {
             UUID(hit["payload"]["candidate_id"]): min(100.0, max(0.0, hit["score"] * 100))

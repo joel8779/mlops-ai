@@ -68,7 +68,6 @@ class CandidateExtractionService:
                     "education": {"type": "array", "items": {"type": "string"}},
                     "experience": {"type": "array", "items": {"type": "string"}},
                     "projects": {"type": "array", "items": {"type": "string"}},
-                    "inferred_seniority": {"type": "string"},
                     "summary": {"type": "string"},
                 },
             }
@@ -88,7 +87,7 @@ class CandidateExtractionService:
                 education=self._clean_list(data.get("education")),
                 experience=self._clean_list(data.get("experience")),
                 projects=self._clean_list(data.get("projects")),
-                inferred_seniority=data.get("inferred_seniority") or None,
+                inferred_seniority=None,  # Never infer from Gemini - use structured fields only
                 summary=data.get("summary") or None,
                 source="gemini",
                 raw={"gemini_model": getattr(result, "model", None)},
@@ -153,17 +152,17 @@ class CandidateExtractionService:
 
     @staticmethod
     def _seniority(years: int | None, text: str) -> str | None:
-        if years is not None:
-            if years >= 8:
-                return "senior"
-            if years >= 3:
-                return "mid"
-            return "junior"
-        if any(term in text for term in ["lead", "principal", "staff engineer", "architect"]):
-            return "senior"
-        if any(term in text for term in ["intern", "trainee", "entry level"]):
-            return "junior"
-        return None
+        # Deterministic seniority classification based on years of experience only
+        # Do NOT infer from tech stack, project complexity, or keywords
+        if years is None:
+            return None  # Experience level unavailable
+        if years <= 1:
+            return "intern"  # 0-1 years: Intern / Entry-level
+        if years <= 3:
+            return "junior"  # 1-3 years: Junior
+        if years <= 5:
+            return "mid"  # 3-5 years: Mid-level
+        return "senior"  # 5+ years: Senior
 
     @staticmethod
     def _summary(text: str, skills: list[str], seniority: str | None) -> str:
@@ -189,4 +188,4 @@ class CandidateExtractionService:
         parts = [part for part in re.split(r"[^A-Za-z]+", source) if len(part) > 1 and not part.isdigit()]
         if parts:
             return " ".join(part.capitalize() for part in parts[:4])
-        return "Imported Candidate"
+        return "Candidate Profile"

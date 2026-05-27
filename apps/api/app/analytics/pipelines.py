@@ -71,14 +71,12 @@ class AnalyticsPipeline:
         candidates_query = select(func.count(Candidate.id)).where(
             and_(
                 Candidate.organization_id == organization_id,
+                Candidate.owner_id == user_id if user_id else Candidate.owner_id.isnot(None),
+                Candidate.deleted_at.is_(None),
                 Candidate.created_at >= start_date,
                 Candidate.created_at <= end_date,
             )
         )
-        if user_id:
-            # Filter by user who uploaded resumes (not directly available on Candidate)
-            # Skip user filter for candidates for now
-            pass
 
         candidates_count = await self.db.scalar(candidates_query)
         metrics.append(
@@ -95,6 +93,8 @@ class AnalyticsPipeline:
         jobs_query = select(func.count(JobDescription.id)).where(
             and_(
                 JobDescription.organization_id == organization_id,
+                JobDescription.owner_id == user_id if user_id else JobDescription.owner_id.isnot(None),
+                JobDescription.deleted_at.is_(None),
                 JobDescription.created_at >= start_date,
                 JobDescription.created_at <= end_date,
             )
@@ -117,6 +117,8 @@ class AnalyticsPipeline:
         feedback_query = select(func.count(RankingFeedback.id)).where(
             and_(
                 RankingFeedback.organization_id == organization_id,
+                RankingFeedback.owner_id == user_id if user_id else RankingFeedback.owner_id.isnot(None),
+                RankingFeedback.deleted_at.is_(None),
                 RankingFeedback.created_at >= start_date,
                 RankingFeedback.created_at <= end_date,
             )
@@ -140,12 +142,14 @@ class AnalyticsPipeline:
     async def compute_hiring_funnel(
         self,
         organization_id: UUID,
+        user_id: Optional[UUID] = None,
         job_id: Optional[UUID] = None,
     ) -> dict[str, int]:
         """Compute hiring funnel metrics.
 
         Args:
             organization_id: Organization ID
+            user_id: Optional user ID to filter by
             job_id: Optional job ID to filter by
 
         Returns:
@@ -160,8 +164,12 @@ class AnalyticsPipeline:
         }
 
         # Count candidates by hiring stage
-        query = select(CandidatePipelineStage.stage, func.count(CandidatePipelineStage.candidate_id)).where(
-            CandidatePipelineStage.organization_id == organization_id
+        query = select(CandidatePipelineStage.stage, func.count(func.distinct(CandidatePipelineStage.candidate_id))).where(
+            and_(
+                CandidatePipelineStage.organization_id == organization_id,
+                CandidatePipelineStage.owner_id == user_id if user_id else CandidatePipelineStage.owner_id.isnot(None),
+                CandidatePipelineStage.deleted_at.is_(None),
+            )
         ).group_by(CandidatePipelineStage.stage)
 
         if job_id:
@@ -211,7 +219,11 @@ class AnalyticsPipeline:
         """
         # Get feedback events
         query = select(RankingFeedback).where(
-            RankingFeedback.organization_id == organization_id
+            and_(
+                RankingFeedback.organization_id == organization_id,
+                RankingFeedback.owner_id.isnot(None),
+                RankingFeedback.deleted_at.is_(None),
+            )
         )
 
         result = await self.db.execute(query)

@@ -63,21 +63,45 @@ export default function JobIntelligencePage({ params }: { params: Promise<{ id: 
   return (
     <AppShell>
       <div className="space-y-6">
+        {/* Top Section: Job title, experience, primary skills, ATS stats */}
         <section className="ops-panel-strong rounded-xl p-5 sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
+            <div className="flex-1">
               <div className="flex items-center gap-2 text-xs uppercase tracking-[0.28em] text-accent">
                 <BrainCircuit className="h-4 w-4" />
                 Job intelligence
               </div>
               <h1 className="mt-3 text-2xl font-semibold">{job?.title || "Job"}</h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-foreground-muted">{job?.description || "Loading job description intelligence."}</p>
+              <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">
+                <span className="text-foreground-muted">Experience required: <span className="text-foreground font-medium">{job?.years_experience_min ?? "Any"} years</span></span>
+                <span className="text-foreground-muted">Status: <span className="text-foreground font-medium">{job?.status || "active"}</span></span>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {(job?.required_skills || []).slice(0, 8).map((skill: string) => (
+                  <span key={skill} className="ops-chip rounded-md px-2 py-1 text-xs">{skill}</span>
+                ))}
+                {(job?.required_skills || []).length === 0 && <span className="text-sm text-foreground-muted">No required skills extracted.</span>}
+              </div>
             </div>
-            <button onClick={load} className="ops-button-secondary inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm">
-              <RefreshCcw className="h-4 w-4" />
-              Refresh
-            </button>
+            <div className="grid grid-cols-3 gap-3 lg:min-w-[280px]">
+              <div className="ops-panel rounded-lg p-3 text-center">
+                <div className="text-xs text-foreground-subtle">Candidates</div>
+                <div className="mt-1 text-xl font-semibold text-accent">{insights.candidate_count || 0}</div>
+              </div>
+              <div className="ops-panel rounded-lg p-3 text-center">
+                <div className="text-xs text-foreground-subtle">Semantic</div>
+                <div className="mt-1 text-xl font-semibold text-accent">{Math.round(insights.average_semantic_alignment || 0)}</div>
+              </div>
+              <div className="ops-panel rounded-lg p-3 text-center">
+                <div className="text-xs text-foreground-subtle">ATS Avg</div>
+                <div className="mt-1 text-xl font-semibold text-accent">{Math.round(insights.average_ats_score || 0)}</div>
+              </div>
+            </div>
           </div>
+          <button onClick={load} className="ops-button-secondary mt-4 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm">
+            <RefreshCcw className="h-4 w-4" />
+            Refresh
+          </button>
         </section>
 
         {error && <div className="rounded-lg border border-error/30 bg-error/10 p-4 text-sm text-error">{error}</div>}
@@ -88,61 +112,58 @@ export default function JobIntelligencePage({ params }: { params: Promise<{ id: 
           </div>
         ) : (
           <>
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="ops-panel rounded-xl p-4">
-                <div className="text-sm text-foreground-muted">Candidates ranked</div>
-                <div className="mt-2 text-2xl font-semibold">{insights.candidate_count || 0}</div>
-              </div>
-              <div className="ops-panel rounded-xl p-4">
-                <div className="text-sm text-foreground-muted">Avg semantic alignment</div>
-                <div className="mt-2 text-2xl font-semibold">{Math.round(insights.average_semantic_alignment || 0)}</div>
-              </div>
-              <div className="ops-panel rounded-xl p-4">
-                <div className="text-sm text-foreground-muted">Required experience</div>
-                <div className="mt-2 text-2xl font-semibold">{job?.years_experience_min ?? "Any"}</div>
-              </div>
+            {/* Middle Section: Cleaned JD summary, responsibilities, requirements */}
+            <div className="grid gap-6 lg:grid-cols-2">
+              <section className="ops-panel rounded-xl p-5">
+                <h2 className="text-base font-semibold">Job description summary</h2>
+                <div className="mt-4 text-sm leading-6 text-foreground-muted max-h-[200px] overflow-y-auto">
+                  {job?.description ? (
+                    <p>{job.description.slice(0, 800)}{job.description.length > 800 ? "..." : ""}</p>
+                  ) : (
+                    <p>Loading job description...</p>
+                  )}
+                </div>
+              </section>
+              <section className="ops-panel rounded-xl p-5">
+                <h2 className="text-base font-semibold">Semantic requirements</h2>
+                <div className="mt-4 space-y-3 max-h-[200px] overflow-y-auto">
+                  {semanticRequirements.length === 0 ? (
+                    <p className="text-sm text-foreground-muted">No semantic requirements extracted yet.</p>
+                  ) : (
+                    semanticRequirements.slice(0, 6).map((item: string) => (
+                      <div key={item} className="rounded-md border border-white/10 bg-white/[0.03] p-3 text-sm leading-6 text-foreground-muted">
+                        {item}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
             </div>
 
+            {/* Bottom Section: Ranked candidates, semantic insights, ATS explanation */}
             <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
               <aside className="space-y-6">
                 <section className="ops-panel rounded-xl p-5">
-                  <h2 className="text-base font-semibold">JD requirements</h2>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {(job?.required_skills || []).map((skill: string) => (
-                      <span key={skill} className="ops-chip rounded-md px-2 py-1 text-xs">{skill}</span>
-                    ))}
-                    {(job?.required_skills || []).length === 0 && <p className="text-sm text-foreground-muted">No required skills extracted.</p>}
-                  </div>
-                </section>
-                <section className="ops-panel rounded-xl p-5">
-                  <h2 className="text-base font-semibold">Semantic requirements</h2>
-                  <div className="mt-4 space-y-3">
-                    {semanticRequirements.length === 0 ? (
-                      <p className="text-sm text-foreground-muted">No semantic requirements extracted yet.</p>
-                    ) : (
-                      semanticRequirements.slice(0, 6).map((item: string) => (
-                        <div key={item} className="rounded-md border border-white/10 bg-white/[0.03] p-3 text-sm leading-6 text-foreground-muted">
-                          {item}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </section>
-                <section className="ops-panel rounded-xl p-5">
                   <h2 className="text-base font-semibold">Semantic insights</h2>
                   <div className="mt-4 space-y-3 text-sm">
-                    {(insights.most_matched_skills || []).slice(0, 6).map((item: any) => (
-                      <div key={item.name} className="flex items-center justify-between rounded-md border border-white/10 bg-white/[0.03] px-3 py-2">
-                        <span>{item.name}</span>
-                        <span className="text-foreground-muted">{item.count}</span>
-                      </div>
-                    ))}
-                    {(insights.missing_skill_clusters || []).slice(0, 4).map((item: any) => (
-                      <div key={item.name} className="flex items-center gap-2 rounded-md border border-warning/20 bg-warning/10 px-3 py-2 text-warning">
-                        <AlertTriangle className="h-4 w-4" />
-                        {item.name}
-                      </div>
-                    ))}
+                    <div>
+                      <div className="mb-2 text-xs uppercase tracking-[0.16em] text-foreground-subtle">Most matched skills</div>
+                      {(insights.most_matched_skills || []).slice(0, 6).map((item: any) => (
+                        <div key={item.name} className="flex items-center justify-between rounded-md border border-white/10 bg-white/[0.03] px-3 py-2">
+                          <span>{item.name}</span>
+                          <span className="text-foreground-muted">{item.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <div className="mb-2 text-xs uppercase tracking-[0.16em] text-warning">Missing skill clusters</div>
+                      {(insights.missing_skill_clusters || []).slice(0, 4).map((item: any) => (
+                        <div key={item.name} className="flex items-center gap-2 rounded-md border border-warning/20 bg-warning/10 px-3 py-2 text-warning">
+                          <AlertTriangle className="h-4 w-4" />
+                          {item.name}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </section>
               </aside>

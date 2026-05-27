@@ -112,6 +112,7 @@ async def _parse_resume(resume_id: UUID) -> None:
             current_stage = "candidate_extraction"
             started = perf_counter()
             candidate = await _ensure_candidate(db, resume)
+            await _update_pipeline_stage(db, resume, candidate, PipelineStage.parsed, {"text_length": len(parsed.text)})
             extraction = await CandidateExtractionService().extract(parsed.text, resume.original_filename, parsed.metadata)
             logger.info(
                 "candidate_extraction_completed",
@@ -141,6 +142,8 @@ async def _parse_resume(resume_id: UUID) -> None:
             current_stage = "skill_persistence"
             started = perf_counter()
             skills = await _extract_candidate_skills(db, resume, candidate, extraction.skills)
+            # Commit skills to DB before proceeding
+            await db.commit()
             logger.info(
                 "skill_persistence_completed",
                 resume_id=str(resume.id),
@@ -151,6 +154,7 @@ async def _parse_resume(resume_id: UUID) -> None:
 
             current_stage = "embedding_indexing"
             started = perf_counter()
+            await _update_pipeline_stage(db, resume, candidate, PipelineStage.embedding, {"skill_count": len(skills)})
             indexed_count = await _embed_resume(db, resume, candidate, skills)
             await trace.success(
                 "embedding_indexing",
@@ -158,6 +162,7 @@ async def _parse_resume(resume_id: UUID) -> None:
                 {"candidate_id": str(candidate.id), "resume_id": str(resume.id), "point_count": indexed_count},
             )
             await _ensure_uploaded_stage(db, resume, candidate)
+            await _update_pipeline_stage(db, resume, candidate, PipelineStage.indexed, {"indexed_count": indexed_count})
             resume.status = ResumeStatus.embedded
             event_type = "resume.embedded"
             event_payload = {"text_length": len(parsed.text), "metadata": parsed.metadata}
@@ -169,6 +174,7 @@ async def _parse_resume(resume_id: UUID) -> None:
                 extracted_text_length=len(resume.extracted_text or ""),
                 skills_count=len(skills),
             )
+            await _update_pipeline_stage(db, resume, candidate, PipelineStage.completed, {"final_status": resume.status.value})
         except Exception as exc:
             logger.exception("resume_parse_failed", resume_id=str(resume_id))
             await db.rollback()
@@ -184,6 +190,15 @@ async def _parse_resume(resume_id: UUID) -> None:
                 "last_failure": classify_pipeline_error(current_stage, exc),
                 "exception_type": type(exc).__name__,
             }
+            # Update pipeline stage to failed if candidate exists
+            if resume.candidate_id:
+                candidate = await db.get(Candidate, resume.candidate_id)
+                if candidate:
+                    await _update_pipeline_stage(db, resume, candidate, PipelineStage.failed, {
+                        "error": classify_pipeline_error(current_stage, exc),
+                        "exception_type": type(exc).__name__,
+                        "failed_stage": current_stage,
+                    })
             event_type = "resume.parse_failed"
             event_payload = {
                 "error": classify_pipeline_error(current_stage, exc),
@@ -244,12 +259,20 @@ async def _ensure_candidate(db, resume: Resume) -> Candidate:
         if candidate is not None:
             return candidate
 
+    # Derive name from filename
+    import re
+    filename = resume.original_filename or ""
+    clean_name = re.sub(r"\.(pdf|docx|doc|txt)$", "", filename, flags=re.IGNORECASE)
+    clean_name = re.sub(r"(?i)\b(resume|cv|candidate)\b", "", clean_name)
+    clean_name = clean_name.strip(" -_")
+    derived_name = clean_name if clean_name and len(clean_name) >= 3 else "Candidate Profile"
+
     candidate = Candidate(
         organization_id=resume.organization_id,
         owner_id=resume.owner_id,
-        full_name="Imported Candidate",
+        full_name=derived_name,
         source="resume_upload",
-        raw_profile={"resume_id": str(resume.id)},
+        raw_profile={"resume_id": str(resume.id), "filename": filename},
     )
     db.add(candidate)
     await db.flush()
@@ -376,3 +399,42 @@ async def _ensure_uploaded_stage(db, resume: Resume, candidate: Candidate) -> No
                 metadata_json={"source": "resume_ingestion", "resume_id": str(resume.id)},
             )
         )
+
+
+async def _update_pipeline_stage(db, resume: Resume, candidate: Candidate, stage: PipelineStage, metadata: dict | None = None) -> None:
+    """Update candidate pipeline stage as resume progresses through processing."""
+    # Delete existing stage for this candidate (no job context)
+    await db.execute(
+        delete(CandidatePipelineStage).where(
+            CandidatePipelineStage.organization_id == resume.organization_id,
+            CandidatePipelineStage.owner_id == resume.owner_id,
+            CandidatePipelineStage.candidate_id == candidate.id,
+            CandidatePipelineStage.job_description_id.is_(None),
+            CandidatePipelineStage.deleted_at.is_(None),
+        )
+    )
+    # Add new stage
+    stage_metadata = {
+        "source": "resume_ingestion",
+        "resume_id": str(resume.id),
+        "resume_status": resume.status.value,
+        **(metadata or {}),
+    }
+    db.add(
+        CandidatePipelineStage(
+            organization_id=resume.organization_id,
+            owner_id=resume.owner_id,
+            candidate_id=candidate.id,
+            job_description_id=None,
+            stage=stage,
+            position=0,
+            metadata_json=stage_metadata,
+        )
+    )
+    logger.info(
+        "pipeline_stage_updated",
+        resume_id=str(resume.id),
+        candidate_id=str(candidate.id),
+        stage=stage.value,
+        resume_status=resume.status.value,
+    )

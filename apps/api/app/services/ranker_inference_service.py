@@ -24,11 +24,17 @@ class RankerInferenceService:
         if not feature_rows:
             return []
         if not self._bundle:
+            logger.warning("ranker_model_not_loaded", model_path=str(self.model_path), fallback="hybrid_fallback")
             return fallback_scores
         try:
             predictions = self._bundle["model"].predict(feature_rows).tolist()
-        except Exception:
-            logger.exception("ranker_inference_failed")
+        except Exception as exc:
+            logger.exception(
+                "ranker_inference_failed",
+                model_path=str(self.model_path),
+                feature_count=len(feature_rows),
+                error=str(exc),
+            )
             return fallback_scores
         min_score = min(predictions)
         max_score = max(predictions)

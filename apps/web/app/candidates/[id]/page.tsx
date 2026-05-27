@@ -18,7 +18,9 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
       setLoading(true);
       setError("");
       try {
-        setCandidate(await candidatesApi.get(id));
+        const candidateData = await candidatesApi.get(id) as any;
+        setCandidate(candidateData);
+        setSummary(candidateData.summary || "");
       } catch (err: any) {
         setError(err.message || "Unable to load candidate");
       } finally {
@@ -33,7 +35,14 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
     setError("");
     try {
       const response = (await aiApi.summary(id)) as any;
-      setSummary(response.answer || response.summary || "");
+      const answerText = String(response.answer ?? "").trim();
+      const summaryText = String(response.summary ?? "").trim();
+      const nextSummary = answerText || summaryText || candidate?.summary || "";
+      setSummary(nextSummary);
+      if (answerText || summaryText) {
+        const newSummary = answerText || summaryText;
+        setCandidate((prev) => (prev ? { ...prev, summary: newSummary } : prev));
+      }
     } catch (err: any) {
       setError(err.message || "Unable to generate summary");
     } finally {

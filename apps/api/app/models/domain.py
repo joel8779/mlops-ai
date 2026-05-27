@@ -25,7 +25,17 @@ class JobStatus(StrEnum):
 
 
 class PipelineStage(StrEnum):
+    # Ingestion stages
     uploaded = "uploaded"
+    queued = "queued"
+    parsing = "parsing"
+    parsed = "parsed"
+    embedding = "embedding"
+    summarizing = "summarizing"
+    indexed = "indexed"
+    completed = "completed"
+    failed = "failed"
+    # Recruiting workflow stages
     ranked = "ranked"
     shortlisted = "shortlisted"
     interviewing = "interviewing"

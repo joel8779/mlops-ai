@@ -146,7 +146,7 @@ export const authApi = {
   logout() {
     clearTokens();
     if (typeof window !== "undefined") {
-      window.location.href = "/";
+      window.location.href = "/login";
     }
   },
 };

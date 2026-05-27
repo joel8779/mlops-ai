@@ -30,7 +30,17 @@ class LLMRecruiterService:
         
         options = GenerationOptions(temperature=0.2)
         result = await self.provider.complete(user_prompt, system_prompt, options)
-        
+
+        # Persist summary only when the LLM returns non-empty content.
+        candidate = await self.candidates.get_for_owner(candidate_id, auth.organization_id, auth.user_id)
+        if candidate:
+            if result.text and result.text.strip():
+                candidate.summary = result.text
+                await self.db.commit()
+            else:
+                # Preserve existing stored summary when LLM output is empty.
+                result = result.__class__(**{**result.__dict__, "text": candidate.summary or ""})
+
         await self._log_usage(auth, "candidate_summary", result)
         return AIResponse(answer=result.text, usage=result.__dict__)
 

@@ -52,8 +52,14 @@ class MetricsAggregator:
         """
         # Get all users in organization
         from app.models.domain import User
+        from sqlalchemy import and_
 
-        query = select(User.id).where(User.organization_id == organization_id)
+        query = select(User.id).where(
+            and_(
+                User.organization_id == organization_id,
+                User.deleted_at.is_(None),
+            )
+        )
         result = await self.db.execute(query)
         user_ids = result.scalars().all()
 
@@ -96,9 +102,13 @@ class MetricsAggregator:
         """
         # Get all jobs in organization
         from app.models.domain import JobDescription
+        from sqlalchemy import and_
 
         query = select(JobDescription.id).where(
-            JobDescription.organization_id == organization_id
+            and_(
+                JobDescription.organization_id == organization_id,
+                JobDescription.deleted_at.is_(None),
+            )
         )
         result = await self.db.execute(query)
         job_ids = result.scalars().all()

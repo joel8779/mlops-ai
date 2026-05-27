@@ -7,6 +7,7 @@ class AuthContext(BaseModel):
     user_id: UUID
     organization_id: UUID
     email: EmailStr
+    full_name: str | None
     roles: list[str]
 
 

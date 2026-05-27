@@ -84,18 +84,21 @@ class WorkflowService:
             select(func.count()).select_from(Candidate).where(
                 Candidate.organization_id == auth.organization_id,
                 Candidate.owner_id == auth.user_id,
+                Candidate.deleted_at.is_(None),
             )
         )
         bookmark_count = await self.db.scalar(
             select(func.count()).select_from(CandidateBookmark).where(
                 CandidateBookmark.organization_id == auth.organization_id,
                 CandidateBookmark.owner_id == auth.user_id,
+                CandidateBookmark.deleted_at.is_(None),
             )
         )
         note_count = await self.db.scalar(
             select(func.count()).select_from(RecruiterNote).where(
                 RecruiterNote.organization_id == auth.organization_id,
                 RecruiterNote.owner_id == auth.user_id,
+                RecruiterNote.deleted_at.is_(None),
             )
         )
         return HiringAnalytics(

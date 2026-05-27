@@ -35,6 +35,7 @@ async def get_current_auth(
         user_id=user.id,
         organization_id=user.organization_id,
         email=user.email,
+        full_name=user.full_name,
         roles=user.roles,
     )
 

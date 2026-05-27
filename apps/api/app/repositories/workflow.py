@@ -33,6 +33,7 @@ class WorkflowRepository(BaseRepository[CandidatePipelineStage]):
             .where(
                 CandidatePipelineStage.organization_id == organization_id,
                 CandidatePipelineStage.owner_id == owner_id,
+                CandidatePipelineStage.deleted_at.is_(None),
             )
             .group_by(CandidatePipelineStage.stage)
         )
@@ -45,7 +46,11 @@ class RecruiterActivityRepository(BaseRepository[RecruiterActivity]):
     async def timeline(self, organization_id: UUID, owner_id: UUID, limit: int = 50) -> list[RecruiterActivity]:
         result = await self.db.execute(
             select(RecruiterActivity)
-            .where(RecruiterActivity.organization_id == organization_id, RecruiterActivity.owner_id == owner_id)
+            .where(
+                RecruiterActivity.organization_id == organization_id,
+                RecruiterActivity.owner_id == owner_id,
+                RecruiterActivity.deleted_at.is_(None),
+            )
             .order_by(RecruiterActivity.created_at.desc())
             .limit(limit)
         )
