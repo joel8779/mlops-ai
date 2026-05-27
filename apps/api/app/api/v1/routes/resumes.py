@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,17 +23,32 @@ async def list_resumes(
     auth: AuthContext = Depends(get_current_auth),
     db: AsyncSession = Depends(get_db),
 ) -> list[Resume]:
-    return await ResumeRepository(db).list_for_org(auth.organization_id)
+    return await ResumeRepository(db).list_for_owner(auth.organization_id, auth.user_id)
 
 
 @router.post("/upload", response_model=ResumeUploadResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_resume(
+    candidate_name: str = Form(..., min_length=1, max_length=255),
+    email: str | None = Form(None),
+    phone: str | None = Form(None),
+    years_experience: int | None = Form(None),
+    location: str | None = Form(None),
     file: UploadFile = File(...),
     auth: AuthContext = Depends(require_roles(UserRole.admin, UserRole.recruiter)),
     db: AsyncSession = Depends(get_db),
     storage: ObjectStorage = Depends(get_object_storage),
 ) -> Resume:
-    return await ingest_resume(db=db, auth=auth, upload=file, storage=storage)
+    return await ingest_resume(
+        db=db,
+        auth=auth,
+        upload=file,
+        storage=storage,
+        candidate_name=candidate_name,
+        email=email,
+        phone=phone,
+        years_experience=years_experience,
+        location=location,
+    )
 
 
 @router.get("/{resume_id}", response_model=ResumeRead)
@@ -42,7 +57,7 @@ async def get_resume(
     auth: AuthContext = Depends(get_current_auth),
     db: AsyncSession = Depends(get_db),
 ) -> Resume:
-    resume = await ResumeRepository(db).get_for_org(resume_id, auth.organization_id)
+    resume = await ResumeRepository(db).get_for_owner(resume_id, auth.organization_id, auth.user_id)
     if resume is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume not found")
     return resume
@@ -54,13 +69,14 @@ async def get_resume_diagnostics(
     auth: AuthContext = Depends(get_current_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    resume = await ResumeRepository(db).get_for_org(resume_id, auth.organization_id)
+    resume = await ResumeRepository(db).get_for_owner(resume_id, auth.organization_id, auth.user_id)
     if resume is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume not found")
     event_rows = await db.execute(
         select(ResumeProcessingEvent)
         .where(
             ResumeProcessingEvent.organization_id == auth.organization_id,
+            ResumeProcessingEvent.owner_id == auth.user_id,
             ResumeProcessingEvent.resume_id == resume.id,
         )
         .order_by(desc(ResumeProcessingEvent.created_at))
@@ -99,7 +115,7 @@ async def delete_resume(
     db: AsyncSession = Depends(get_db),
     storage: ObjectStorage = Depends(get_object_storage),
 ) -> None:
-    resume = await ResumeRepository(db).get_for_org(resume_id, auth.organization_id)
+    resume = await ResumeRepository(db).get_for_owner(resume_id, auth.organization_id, auth.user_id)
     if resume is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume not found")
     await DeleteWorkflowService(db, storage).delete_resume(resume)

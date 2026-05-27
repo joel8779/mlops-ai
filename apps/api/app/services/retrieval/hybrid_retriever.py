@@ -61,6 +61,7 @@ class HybridRetriever:
         self,
         query: str,
         organization_id: UUID,
+        owner_id: UUID,
         job_description_id: Optional[UUID] = None,
         limit: int = 10,
         filters: Optional[dict[str, Any]] = None,
@@ -89,6 +90,7 @@ class HybridRetriever:
 
                 vector_results = await self.semantic_search.search_candidates(
                     organization_id=organization_id,
+                    owner_id=owner_id,
                     query=query,
                     job_description_id=job_description_id,
                     limit=limit * 2,
@@ -96,6 +98,7 @@ class HybridRetriever:
                 keyword_results = await self.bm25_indexer.search(
                     query=query,
                     organization_id=organization_id,
+                    owner_id=owner_id,
                     job_description_id=job_description_id,
                     limit=limit * 2,
                 )

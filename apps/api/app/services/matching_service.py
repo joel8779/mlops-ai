@@ -30,6 +30,7 @@ class MatchingService:
     async def rank_candidates(
         self,
         organization_id: UUID,
+        owner_id: UUID,
         job: JobDescription,
         limit: int,
         weights: MatchingWeights | None = None,
@@ -43,7 +44,7 @@ class MatchingService:
             keyword=settings.match_keyword_weight,
         )
         try:
-            semantic_hits = EmbeddingService().semantic_search(organization_id, job.description, limit=limit * 3)
+            semantic_hits = EmbeddingService().semantic_search(organization_id, owner_id, job.description, limit=limit * 3)
         except Exception:
             semantic_hits = []
         semantic_by_candidate = {
@@ -51,11 +52,11 @@ class MatchingService:
             for hit in semantic_hits
             if hit.get("payload", {}).get("candidate_id")
         }
-        candidates = await self.candidates.list_for_org(organization_id, limit=limit * 3)
+        candidates = await self.candidates.list_for_owner(organization_id, owner_id, limit=limit * 3)
         scored: list[CandidateMatchRead] = []
         for candidate in candidates:
-            resume = await self.candidates.latest_resume(candidate.id)
-            skills = await self.candidates.skills_for_candidate(candidate.id)
+            resume = await self.candidates.latest_resume(candidate.id, organization_id, owner_id)
+            skills = await self.candidates.skills_for_candidate(candidate.id, organization_id, owner_id)
             evidence = CandidateEvidence(
                 candidate=candidate,
                 resume=resume,
@@ -65,7 +66,7 @@ class MatchingService:
             )
             scored.append(self.score(job, evidence, weights, recruiter_preferences or {}))
         scored.sort(key=lambda item: item.overall_score, reverse=True)
-        await self._persist(organization_id, job.id, scored[:limit])
+        await self._persist(organization_id, owner_id, job.id, scored[:limit])
         return scored[:limit]
 
     def score(
@@ -106,10 +107,11 @@ class MatchingService:
             explanation=self._explain(job, matched_skills, missing_skills, overall),
         )
 
-    async def _persist(self, organization_id: UUID, job_id: UUID, matches: list[CandidateMatchRead]) -> None:
+    async def _persist(self, organization_id: UUID, owner_id: UUID, job_id: UUID, matches: list[CandidateMatchRead]) -> None:
         await self.db.execute(
             delete(CandidateMatch).where(
                 CandidateMatch.organization_id == organization_id,
+                CandidateMatch.owner_id == owner_id,
                 CandidateMatch.job_description_id == job_id,
             )
         )
@@ -117,6 +119,7 @@ class MatchingService:
             self.db.add(
                 CandidateMatch(
                     organization_id=organization_id,
+                    owner_id=owner_id,
                     candidate_id=match.candidate_id,
                     job_description_id=job_id,
                     overall_score=match.overall_score,
@@ -134,6 +137,7 @@ class MatchingService:
             current_stage = await self.db.scalar(
                 select(CandidatePipelineStage).where(
                     CandidatePipelineStage.organization_id == organization_id,
+                    CandidatePipelineStage.owner_id == owner_id,
                     CandidatePipelineStage.candidate_id == match.candidate_id,
                     CandidatePipelineStage.job_description_id == job_id,
                     CandidatePipelineStage.deleted_at.is_(None),
@@ -143,6 +147,7 @@ class MatchingService:
                 self.db.add(
                     CandidatePipelineStage(
                         organization_id=organization_id,
+                        owner_id=owner_id,
                         candidate_id=match.candidate_id,
                         job_description_id=job_id,
                         stage=PipelineStage.ranked,

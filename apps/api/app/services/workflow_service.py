@@ -1,3 +1,4 @@
+from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +9,8 @@ from app.models.domain import (
     RecruiterActivity,
     RecruiterNote,
 )
+from app.repositories.candidates import CandidateRepository
+from app.repositories.jobs import JobDescriptionRepository
 from app.repositories.workflow import RecruiterActivityRepository, WorkflowRepository
 from app.schemas.auth import AuthContext
 from app.schemas.workflow import HiringAnalytics, RecruiterNoteCreate, StageUpdateRequest, WorkflowActivityRead
@@ -20,10 +23,19 @@ class WorkflowService:
         self.activities = RecruiterActivityRepository(db)
 
     async def update_stage(self, auth: AuthContext, payload: StageUpdateRequest) -> CandidatePipelineStage:
-        stage = await self.workflow.current_stage(payload.candidate_id, payload.job_description_id)
+        await self._ensure_candidate_in_org(auth, payload.candidate_id)
+        if payload.job_description_id is not None:
+            await self._ensure_job_in_org(auth, payload.job_description_id)
+        stage = await self.workflow.current_stage(
+            auth.organization_id,
+            auth.user_id,
+            payload.candidate_id,
+            payload.job_description_id,
+        )
         if stage is None:
             stage = CandidatePipelineStage(
                 organization_id=auth.organization_id,
+                owner_id=auth.user_id,
                 candidate_id=payload.candidate_id,
                 job_description_id=payload.job_description_id,
             )
@@ -36,8 +48,10 @@ class WorkflowService:
         return stage
 
     async def add_note(self, auth: AuthContext, payload: RecruiterNoteCreate) -> RecruiterNote:
+        await self._ensure_candidate_in_org(auth, payload.candidate_id)
         note = RecruiterNote(
             organization_id=auth.organization_id,
+            owner_id=auth.user_id,
             candidate_id=payload.candidate_id,
             user_id=auth.user_id,
             body=payload.body,
@@ -49,8 +63,10 @@ class WorkflowService:
         return note
 
     async def bookmark(self, auth: AuthContext, candidate_id) -> CandidateBookmark:
+        await self._ensure_candidate_in_org(auth, candidate_id)
         bookmark = CandidateBookmark(
             organization_id=auth.organization_id,
+            owner_id=auth.user_id,
             candidate_id=candidate_id,
             user_id=auth.user_id,
         )
@@ -61,21 +77,30 @@ class WorkflowService:
         return bookmark
 
     async def timeline(self, auth: AuthContext) -> list[WorkflowActivityRead]:
-        return [WorkflowActivityRead.model_validate(item) for item in await self.activities.timeline(auth.organization_id)]
+        return [WorkflowActivityRead.model_validate(item) for item in await self.activities.timeline(auth.organization_id, auth.user_id)]
 
     async def analytics(self, auth: AuthContext) -> HiringAnalytics:
         candidate_count = await self.db.scalar(
-            select(func.count()).select_from(Candidate).where(Candidate.organization_id == auth.organization_id)
+            select(func.count()).select_from(Candidate).where(
+                Candidate.organization_id == auth.organization_id,
+                Candidate.owner_id == auth.user_id,
+            )
         )
         bookmark_count = await self.db.scalar(
-            select(func.count()).select_from(CandidateBookmark).where(CandidateBookmark.organization_id == auth.organization_id)
+            select(func.count()).select_from(CandidateBookmark).where(
+                CandidateBookmark.organization_id == auth.organization_id,
+                CandidateBookmark.owner_id == auth.user_id,
+            )
         )
         note_count = await self.db.scalar(
-            select(func.count()).select_from(RecruiterNote).where(RecruiterNote.organization_id == auth.organization_id)
+            select(func.count()).select_from(RecruiterNote).where(
+                RecruiterNote.organization_id == auth.organization_id,
+                RecruiterNote.owner_id == auth.user_id,
+            )
         )
         return HiringAnalytics(
             total_candidates=int(candidate_count or 0),
-            by_stage=await self.workflow.stage_counts(auth.organization_id),
+            by_stage=await self.workflow.stage_counts(auth.organization_id, auth.user_id),
             bookmarked=int(bookmark_count or 0),
             notes=int(note_count or 0),
         )
@@ -84,6 +109,7 @@ class WorkflowService:
         self.db.add(
             RecruiterActivity(
                 organization_id=auth.organization_id,
+                owner_id=auth.user_id,
                 user_id=auth.user_id,
                 candidate_id=payload.get("candidate_id"),
                 job_description_id=payload.get("job_description_id"),
@@ -91,3 +117,13 @@ class WorkflowService:
                 payload=payload,
             )
         )
+
+    async def _ensure_candidate_in_org(self, auth: AuthContext, candidate_id) -> None:
+        candidate = await CandidateRepository(self.db).get_for_owner(candidate_id, auth.organization_id, auth.user_id)
+        if candidate is None:
+            raise HTTPException(status_code=404, detail="Candidate not found")
+
+    async def _ensure_job_in_org(self, auth: AuthContext, job_description_id) -> None:
+        job = await JobDescriptionRepository(self.db).get_for_owner(job_description_id, auth.organization_id, auth.user_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job description not found")

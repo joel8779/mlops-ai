@@ -205,8 +205,13 @@ export const resumesApi = {
     return apiFetch("/resumes");
   },
 
-  async upload(file: File) {
+  async upload(file: File, candidate: { candidate_name: string; email?: string; phone?: string; years_experience?: number; location?: string }) {
     const formData = new FormData();
+    formData.append("candidate_name", candidate.candidate_name);
+    if (candidate.email) formData.append("email", candidate.email);
+    if (candidate.phone) formData.append("phone", candidate.phone);
+    if (candidate.years_experience !== undefined) formData.append("years_experience", String(candidate.years_experience));
+    if (candidate.location) formData.append("location", candidate.location);
     formData.append("file", file);
     return apiFetch("/resumes/upload", {
       method: "POST",

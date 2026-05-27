@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 
 
 class CandidateListItem(BaseModel):
@@ -22,3 +22,8 @@ class CandidateListItem(BaseModel):
 class CandidateRead(CandidateListItem):
     raw_profile: dict
     resume_text_preview: str | None = None
+
+
+class CandidateIdentityUpdate(BaseModel):
+    full_name: str | None = Field(default=None, min_length=1, max_length=255)
+    email: EmailStr | None = None

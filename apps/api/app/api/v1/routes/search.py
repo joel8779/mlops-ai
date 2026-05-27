@@ -16,4 +16,4 @@ async def search_candidates(
     auth: AuthContext = Depends(get_current_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    return await SemanticSearchService(db).search(auth.organization_id, payload)
+    return await SemanticSearchService(db).search(auth.organization_id, auth.user_id, payload)

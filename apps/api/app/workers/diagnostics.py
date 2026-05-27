@@ -59,17 +59,19 @@ def embedding_qdrant_probe_task() -> dict:
     chunks = [TextChunk(index=0, text="distributed worker semantic indexing validation")]
     vectors = service.embed(chunks)
     organization_id = uuid4()
+    owner_id = uuid4()
     candidate_id = uuid4()
     resume_id = uuid4()
     point_ids = service.upsert_candidate_resume(
         organization_id=organization_id,
+        owner_id=owner_id,
         candidate_id=candidate_id,
         resume_id=resume_id,
         chunks=chunks,
         vectors=vectors,
         metadata={"phase": "24.3", "skills": ["python", "celery"]},
     )
-    hits = service.candidate_search(organization_id, "python celery worker", limit=1)
+    hits = service.candidate_search(organization_id, owner_id, "python celery worker", limit=1)
     return {
         "ok": bool(point_ids and hits),
         "vector_size": len(vectors[0]) if vectors else 0,

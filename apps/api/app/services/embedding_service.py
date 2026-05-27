@@ -188,6 +188,7 @@ class EmbeddingService:
     def upsert_candidate_resume(
         self,
         organization_id: UUID,
+        owner_id: UUID,
         candidate_id: UUID,
         resume_id: UUID,
         chunks: list[TextChunk],
@@ -202,6 +203,7 @@ class EmbeddingService:
                 vector=vector,
                 payload={
                     "organization_id": str(organization_id),
+                    "owner_id": str(owner_id),
                     "candidate_id": str(candidate_id),
                     "resume_id": str(resume_id),
                     "chunk_index": chunk.index,
@@ -220,6 +222,7 @@ class EmbeddingService:
     def upsert_job_description(
         self,
         organization_id: UUID,
+        owner_id: UUID,
         job_description_id: UUID,
         chunks: list[TextChunk],
         vectors: list[list[float]],
@@ -231,6 +234,7 @@ class EmbeddingService:
                 vector=vector,
                 payload={
                     "organization_id": str(organization_id),
+                    "owner_id": str(owner_id),
                     "job_description_id": str(job_description_id),
                     "job_id": str(job_description_id),
                     "chunk_index": chunk.index,
@@ -245,7 +249,7 @@ class EmbeddingService:
             self.client.upsert(collection_name=settings.qdrant_job_collection, points=points)
         return point_ids
 
-    def semantic_search(self, organization_id: UUID, query: str, limit: int = 10) -> list[dict]:
+    def semantic_search(self, organization_id: UUID, owner_id: UUID, query: str, limit: int = 10) -> list[dict]:
         start_time = perf_counter()
         vector = self.embed([TextChunk(index=0, text=query)])[0]
         EMBEDDING_GENERATION_DURATION_MS.labels(settings.embedding_model_name, "success").observe(
@@ -256,6 +260,7 @@ class EmbeddingService:
             query_vector=vector,
             query_filter=Filter(
                 must=[FieldCondition(key="organization_id", match=MatchValue(value=str(organization_id)))]
+                + [FieldCondition(key="owner_id", match=MatchValue(value=str(owner_id)))]
             ),
             limit=limit,
         )
@@ -264,6 +269,7 @@ class EmbeddingService:
     def candidate_search(
         self,
         organization_id: UUID,
+        owner_id: UUID,
         query: str,
         limit: int,
         skills: list[str] | None = None,
@@ -273,7 +279,10 @@ class EmbeddingService:
         EMBEDDING_GENERATION_DURATION_MS.labels(settings.embedding_model_name, "success").observe(
             elapsed_ms(start_time)
         )
-        conditions = [FieldCondition(key="organization_id", match=MatchValue(value=str(organization_id)))]
+        conditions = [
+            FieldCondition(key="organization_id", match=MatchValue(value=str(organization_id))),
+            FieldCondition(key="owner_id", match=MatchValue(value=str(owner_id))),
+        ]
         if skills:
             conditions.append(FieldCondition(key="skills", match=MatchAny(any=skills)))
         results = self.client.search(

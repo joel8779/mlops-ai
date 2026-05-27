@@ -16,7 +16,7 @@ from app.services.llm_provider import get_llm_provider
 class OutreachGeneratorTool(Tool):
     """Tool for generating outreach emails."""
 
-    def __init__(self, db: AsyncSession, organization_id: UUID) -> None:
+    def __init__(self, db: AsyncSession, organization_id: UUID, owner_id: UUID | None = None) -> None:
         """Initialize outreach generator tool.
 
         Args:
@@ -25,6 +25,7 @@ class OutreachGeneratorTool(Tool):
         """
         self.db = db
         self.organization_id = organization_id
+        self.owner_id = owner_id
         self.candidates = CandidateRepository(db)
         self.jobs = JobDescriptionRepository(db)
         self.prompt_manager = PromptManager()
@@ -45,9 +46,12 @@ class OutreachGeneratorTool(Tool):
 
         if not candidate_id:
             return "No candidate ID provided for outreach generation."
+        owner_id = self.owner_id or context.get("recruiter_id") or context.get("user_id")
+        if owner_id is None:
+            return "Outreach generation requires an authenticated recruiter context."
 
         # Get candidate context
-        candidate = await self.candidates.get_for_org(UUID(candidate_id), self.organization_id)
+        candidate = await self.candidates.get_for_owner(UUID(candidate_id), self.organization_id, UUID(str(owner_id)))
         if not candidate:
             return f"Candidate {candidate_id} not found."
 
@@ -56,7 +60,7 @@ class OutreachGeneratorTool(Tool):
         # Get job context
         job_context = "No job specified"
         if job_id:
-            job = await self.jobs.get_for_org(UUID(job_id), self.organization_id)
+            job = await self.jobs.get_for_owner(UUID(job_id), self.organization_id, UUID(str(owner_id)))
             if job:
                 job_context = f"Title: {job.title}\nDescription: {job.description[:500]}"
 

@@ -21,7 +21,7 @@ class LLMRecruiterService:
         self.prompt_manager = PromptManager()
 
     async def summarize_candidate(self, auth: AuthContext, candidate_id: UUID) -> AIResponse:
-        context = await self._candidate_context(candidate_id, auth.organization_id)
+        context = await self._candidate_context(candidate_id, auth.organization_id, auth.user_id)
         system_prompt = self.prompt_manager.format_prompt(PromptTemplate.RECRUITER_SYSTEM)
         user_prompt = self.prompt_manager.format_prompt(
             PromptTemplate.CANDIDATE_SUMMARY,
@@ -41,8 +41,8 @@ class LLMRecruiterService:
         job_description_id: UUID | None,
         count: int,
     ) -> AIResponse:
-        candidate_context = await self._candidate_context(candidate_id, auth.organization_id)
-        job_context = await self._job_context(job_description_id, auth.organization_id)
+        candidate_context = await self._candidate_context(candidate_id, auth.organization_id, auth.user_id)
+        job_context = await self._job_context(job_description_id, auth.organization_id, auth.user_id)
         
         system_prompt = self.prompt_manager.format_prompt(PromptTemplate.RECRUITER_SYSTEM)
         user_prompt = self.prompt_manager.format_prompt(
@@ -64,8 +64,8 @@ class LLMRecruiterService:
         candidate_ids: list[UUID],
         job_description_id: UUID | None,
     ) -> AIResponse:
-        contexts = [await self._candidate_context(candidate_id, auth.organization_id) for candidate_id in candidate_ids]
-        job_context = await self._job_context(job_description_id, auth.organization_id)
+        contexts = [await self._candidate_context(candidate_id, auth.organization_id, auth.user_id) for candidate_id in candidate_ids]
+        job_context = await self._job_context(job_description_id, auth.organization_id, auth.user_id)
         
         system_prompt = self.prompt_manager.format_prompt(PromptTemplate.RECRUITER_SYSTEM)
         user_prompt = self.prompt_manager.format_prompt(
@@ -80,22 +80,45 @@ class LLMRecruiterService:
         await self._log_usage(auth, "candidate_comparison", result)
         return AIResponse(answer=result.text, usage=result.__dict__)
 
-    async def _candidate_context(self, candidate_id: UUID, organization_id: UUID) -> str:
-        candidate = await self.candidates.get_for_org(candidate_id, organization_id)
+    async def _candidate_context(self, candidate_id: UUID, organization_id: UUID, owner_id: UUID) -> str:
+        candidate = await self.candidates.get_for_owner(candidate_id, organization_id, owner_id)
         if candidate is None:
             return f"Candidate {candidate_id} not found."
-        resume = await self.candidates.latest_resume(candidate.id)
-        skills = await self.candidates.skills_for_candidate(candidate.id)
+        resume = await self.candidates.latest_resume(candidate.id, organization_id, owner_id)
+        skills = await self.candidates.skills_for_candidate(candidate.id, organization_id, owner_id)
+        
+        # Try to get resume text from extracted_text, fallback to raw_profile
+        resume_text = ""
+        if resume and resume.extracted_text:
+            resume_text = resume.extracted_text
+        elif candidate.raw_profile and isinstance(candidate.raw_profile, dict):
+            # Check if raw_profile contains resume text
+            resume_text = str(candidate.raw_profile.get("resume_text", ""))
+        
+        # Log what we're sending to Gemini
+        from app.logging import get_logger
+        logger = get_logger(__name__)
+        logger.info(
+            "summary_generation_input",
+            candidate_id=str(candidate_id),
+            resume_id=str(resume.id) if resume else None,
+            resume_status=resume.status.value if resume else None,
+            extracted_text_length=len(resume.extracted_text or "") if resume else 0,
+            skills_count=len(skills),
+            resume_text_length=len(resume_text),
+            has_resume_text=bool(resume_text),
+        )
+        
         return (
             f"Candidate ID: {candidate.id}\nName: {candidate.full_name}\n"
             f"Headline: {candidate.headline}\nLocation: {candidate.location}\n"
-            f"Skills: {', '.join(skills)}\nResume excerpt: {((resume.extracted_text if resume else '') or '')[:3000]}"
+            f"Skills: {', '.join(skills)}\nResume excerpt: {resume_text[:3000]}"
         )
 
-    async def _job_context(self, job_id: UUID | None, organization_id: UUID) -> str:
+    async def _job_context(self, job_id: UUID | None, organization_id: UUID, owner_id: UUID) -> str:
         if job_id is None:
             return "No job description provided."
-        job = await self.jobs.get_for_org(job_id, organization_id)
+        job = await self.jobs.get_for_owner(job_id, organization_id, owner_id)
         if job is None:
             return f"Job {job_id} not found."
         return (
@@ -107,6 +130,7 @@ class LLMRecruiterService:
         self.db.add(
             LLMUsageLog(
                 organization_id=auth.organization_id,
+                owner_id=auth.user_id,
                 user_id=auth.user_id,
                 provider=result.provider,
                 model=result.model,

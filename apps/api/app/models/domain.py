@@ -1,5 +1,5 @@
 from enum import StrEnum
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID
 
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
@@ -68,13 +68,38 @@ class User(TimestampedUUIDModel):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     organization: Mapped[Organization] = relationship(back_populates="users")
-    resumes_uploaded: Mapped[list["Resume"]] = relationship(back_populates="uploaded_by")
+    resumes_uploaded: Mapped[list["Resume"]] = relationship(foreign_keys="[Resume.uploaded_by_user_id]", back_populates="uploaded_by")
+    owned_resumes: Mapped[list["Resume"]] = relationship(foreign_keys="[Resume.owner_id]", back_populates="owner")
+    owned_candidates: Mapped[list["Candidate"]] = relationship(foreign_keys="[Candidate.owner_id]", back_populates="owner")
+    owned_job_descriptions: Mapped[list["JobDescription"]] = relationship(foreign_keys="[JobDescription.owner_id]", back_populates="owner")
+    created_job_descriptions: Mapped[list["JobDescription"]] = relationship(foreign_keys="[JobDescription.created_by_user_id]", back_populates="created_by")
+    owned_job_description_embeddings: Mapped[list["JobDescriptionEmbedding"]] = relationship(foreign_keys="[JobDescriptionEmbedding.owner_id]", back_populates="owner")
+    owned_candidate_embeddings: Mapped[list["CandidateEmbedding"]] = relationship(foreign_keys="[CandidateEmbedding.owner_id]", back_populates="owner")
+    owned_candidate_skills: Mapped[list["CandidateSkill"]] = relationship(foreign_keys="[CandidateSkill.owner_id]", back_populates="owner")
+    owned_recruiter_notes: Mapped[list["RecruiterNote"]] = relationship(foreign_keys="[RecruiterNote.owner_id]", back_populates="owner")
+    authored_recruiter_notes: Mapped[list["RecruiterNote"]] = relationship(foreign_keys="[RecruiterNote.user_id]", back_populates="user")
+    owned_pipeline_stages: Mapped[list["CandidatePipelineStage"]] = relationship(foreign_keys="[CandidatePipelineStage.owner_id]", back_populates="owner")
+    owned_candidate_bookmarks: Mapped[list["CandidateBookmark"]] = relationship(foreign_keys="[CandidateBookmark.owner_id]", back_populates="owner")
+    candidate_bookmarks: Mapped[list["CandidateBookmark"]] = relationship(foreign_keys="[CandidateBookmark.user_id]", back_populates="user")
+    owned_activities: Mapped[list["RecruiterActivity"]] = relationship(foreign_keys="[RecruiterActivity.owner_id]", back_populates="owner")
+    activities: Mapped[list["RecruiterActivity"]] = relationship(foreign_keys="[RecruiterActivity.user_id]", back_populates="user")
+    owned_matches: Mapped[list["CandidateMatch"]] = relationship(foreign_keys="[CandidateMatch.owner_id]", back_populates="owner")
+    owned_feedback: Mapped[list["RankingFeedback"]] = relationship(foreign_keys="[RankingFeedback.owner_id]", back_populates="owner")
+    submitted_feedback: Mapped[list["RankingFeedback"]] = relationship(foreign_keys="[RankingFeedback.user_id]", back_populates="user")
+    audit_logs: Mapped[list["AuditLog"]] = relationship(foreign_keys="[AuditLog.user_id]", back_populates="user")
+    analytics_snapshots: Mapped[list["AnalyticsSnapshot"]] = relationship(foreign_keys="[AnalyticsSnapshot.owner_id]", back_populates="owner")
+    owned_ats_scores: Mapped[list["ATSScore"]] = relationship(foreign_keys="[ATSScore.owner_id]", back_populates="owner")
+    owned_llm_usage_logs: Mapped[list["LLMUsageLog"]] = relationship(foreign_keys="[LLMUsageLog.owner_id]", back_populates="owner")
+    llm_usage_logs: Mapped[list["LLMUsageLog"]] = relationship(foreign_keys="[LLMUsageLog.user_id]", back_populates="user")
+    owned_resume_processing_events: Mapped[list["ResumeProcessingEvent"]] = relationship(foreign_keys="[ResumeProcessingEvent.owner_id]", back_populates="owner")
+    conversations: Mapped[list["RecruiterConversation"]] = relationship(foreign_keys="[RecruiterConversation.user_id]", back_populates="user")
 
 
 class Candidate(TimestampedUUIDModel):
     __tablename__ = "candidates"
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     full_name: Mapped[str | None] = mapped_column(String(255), index=True)
     email: Mapped[str | None] = mapped_column(String(320), index=True)
     phone: Mapped[str | None] = mapped_column(String(64), index=True)
@@ -85,12 +110,20 @@ class Candidate(TimestampedUUIDModel):
     raw_profile: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
     organization: Mapped[Organization] = relationship(back_populates="candidates")
+    owner: Mapped["User"] = relationship(foreign_keys=[owner_id], back_populates="owned_candidates")
     resumes: Mapped[list["Resume"]] = relationship(back_populates="candidate")
     skills: Mapped[list["CandidateSkill"]] = relationship(back_populates="candidate")
     embeddings: Mapped[list["CandidateEmbedding"]] = relationship(back_populates="candidate")
     notes: Mapped[list["RecruiterNote"]] = relationship(back_populates="candidate")
+    pipeline_stages: Mapped[list["CandidatePipelineStage"]] = relationship(back_populates="candidate")
+    bookmarks: Mapped[list["CandidateBookmark"]] = relationship(back_populates="candidate")
+    activities: Mapped[list["RecruiterActivity"]] = relationship(back_populates="candidate")
+    matches: Mapped[list["CandidateMatch"]] = relationship(back_populates="candidate")
+    feedback: Mapped[list["RankingFeedback"]] = relationship(back_populates="candidate")
+    ats_scores: Mapped[list["ATSScore"]] = relationship(back_populates="candidate")
 
     __table_args__ = (
+        Index("ix_candidates_owner_created", "owner_id", "created_at"),
         Index("ix_candidates_org_email", "organization_id", "email"),
         Index("ix_candidates_org_phone", "organization_id", "phone"),
     )
@@ -100,6 +133,7 @@ class Resume(TimestampedUUIDModel):
     __tablename__ = "resumes"
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     candidate_id: Mapped[UUID | None] = mapped_column(ForeignKey("candidates.id"), index=True)
     uploaded_by_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     original_filename: Mapped[str] = mapped_column(String(512))
@@ -112,8 +146,12 @@ class Resume(TimestampedUUIDModel):
     parser_version: Mapped[str | None] = mapped_column(String(64))
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
-    candidate: Mapped[Candidate | None] = relationship(back_populates="resumes")
-    uploaded_by: Mapped[User] = relationship(back_populates="resumes_uploaded")
+    candidate: Mapped[Optional["Candidate"]] = relationship(back_populates="resumes")
+    uploaded_by: Mapped["User"] = relationship(foreign_keys=[uploaded_by_user_id], back_populates="resumes_uploaded")
+    owner: Mapped["User"] = relationship(foreign_keys=[owner_id], back_populates="owned_resumes")
+    embeddings: Mapped[list["CandidateEmbedding"]] = relationship(back_populates="resume")
+    ats_scores: Mapped[list["ATSScore"]] = relationship(back_populates="resume")
+    processing_events: Mapped[list["ResumeProcessingEvent"]] = relationship(back_populates="resume")
 
     __table_args__ = (Index("ix_resumes_org_checksum", "organization_id", "checksum_sha256"),)
 
@@ -122,6 +160,7 @@ class JobDescription(TimestampedUUIDModel):
     __tablename__ = "job_descriptions"
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     created_by_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     title: Mapped[str] = mapped_column(String(255), index=True)
     description: Mapped[str] = mapped_column(Text)
@@ -135,17 +174,30 @@ class JobDescription(TimestampedUUIDModel):
     optional_skills: Mapped[list[str]] = mapped_column(JSONB, default=list)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
+    owner: Mapped["User"] = relationship(foreign_keys=[owner_id], back_populates="owned_job_descriptions")
+    created_by: Mapped["User"] = relationship(foreign_keys=[created_by_user_id], back_populates="created_job_descriptions")
+    embeddings: Mapped[list["JobDescriptionEmbedding"]] = relationship(back_populates="job_description")
+    pipeline_stages: Mapped[list["CandidatePipelineStage"]] = relationship(back_populates="job_description")
+    activities: Mapped[list["RecruiterActivity"]] = relationship(back_populates="job_description")
+    matches: Mapped[list["CandidateMatch"]] = relationship(back_populates="job_description")
+    feedback: Mapped[list["RankingFeedback"]] = relationship(back_populates="job_description")
+    ats_scores: Mapped[list["ATSScore"]] = relationship(back_populates="job_description")
+
 
 class JobDescriptionEmbedding(TimestampedUUIDModel):
     __tablename__ = "job_description_embeddings"
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     job_description_id: Mapped[UUID] = mapped_column(ForeignKey("job_descriptions.id"), index=True)
     qdrant_point_id: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     model_name: Mapped[str] = mapped_column(String(255), index=True)
     vector_size: Mapped[int] = mapped_column(Integer)
     chunk_index: Mapped[int] = mapped_column(Integer)
     chunk_text: Mapped[str] = mapped_column(Text)
+
+    job_description: Mapped["JobDescription"] = relationship(back_populates="embeddings")
+    owner: Mapped["User"] = relationship(foreign_keys=[owner_id], back_populates="owned_job_description_embeddings")
 
     __table_args__ = (
         UniqueConstraint("job_description_id", "chunk_index", name="uq_jd_embeddings_jd_chunk"),
@@ -156,6 +208,7 @@ class CandidateEmbedding(TimestampedUUIDModel):
     __tablename__ = "candidate_embeddings"
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     candidate_id: Mapped[UUID] = mapped_column(ForeignKey("candidates.id"), index=True)
     resume_id: Mapped[UUID | None] = mapped_column(ForeignKey("resumes.id"), index=True)
     qdrant_point_id: Mapped[str] = mapped_column(String(120), unique=True, index=True)
@@ -164,7 +217,9 @@ class CandidateEmbedding(TimestampedUUIDModel):
     chunk_index: Mapped[int] = mapped_column(Integer)
     chunk_text: Mapped[str] = mapped_column(Text)
 
-    candidate: Mapped[Candidate] = relationship(back_populates="embeddings")
+    candidate: Mapped["Candidate"] = relationship(back_populates="embeddings")
+    resume: Mapped[Optional["Resume"]] = relationship(back_populates="embeddings")
+    owner: Mapped["User"] = relationship(foreign_keys=[owner_id], back_populates="owned_candidate_embeddings")
 
     __table_args__ = (
         UniqueConstraint("resume_id", "chunk_index", name="uq_candidate_embeddings_resume_chunk"),
@@ -175,12 +230,14 @@ class CandidateSkill(TimestampedUUIDModel):
     __tablename__ = "candidate_skills"
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     candidate_id: Mapped[UUID] = mapped_column(ForeignKey("candidates.id"), index=True)
     normalized_skill: Mapped[str] = mapped_column(String(150), index=True)
     raw_skill: Mapped[str | None] = mapped_column(String(150))
     confidence: Mapped[float] = mapped_column(Numeric(5, 4), default=0)
 
-    candidate: Mapped[Candidate] = relationship(back_populates="skills")
+    candidate: Mapped["Candidate"] = relationship(back_populates="skills")
+    owner: Mapped["User"] = relationship(foreign_keys=[owner_id], back_populates="owned_candidate_skills")
 
     __table_args__ = (
         UniqueConstraint("candidate_id", "normalized_skill", name="uq_candidate_skill_candidate_skill"),
@@ -191,17 +248,21 @@ class RecruiterNote(TimestampedUUIDModel):
     __tablename__ = "recruiter_notes"
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     candidate_id: Mapped[UUID] = mapped_column(ForeignKey("candidates.id"), index=True)
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     body: Mapped[str] = mapped_column(Text)
 
-    candidate: Mapped[Candidate] = relationship(back_populates="notes")
+    candidate: Mapped["Candidate"] = relationship(back_populates="notes")
+    owner: Mapped["User"] = relationship(foreign_keys=[owner_id], back_populates="owned_recruiter_notes")
+    user: Mapped["User"] = relationship(foreign_keys=[user_id], back_populates="authored_recruiter_notes")
 
 
 class CandidatePipelineStage(TimestampedUUIDModel):
     __tablename__ = "candidate_pipeline_stages"
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     candidate_id: Mapped[UUID] = mapped_column(ForeignKey("candidates.id"), index=True)
     job_description_id: Mapped[UUID | None] = mapped_column(ForeignKey("job_descriptions.id"), index=True)
     stage: Mapped[PipelineStage] = mapped_column(
@@ -212,13 +273,22 @@ class CandidatePipelineStage(TimestampedUUIDModel):
     position: Mapped[int] = mapped_column(Integer, default=0)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
+    candidate: Mapped["Candidate"] = relationship(back_populates="pipeline_stages")
+    job_description: Mapped[Optional["JobDescription"]] = relationship(back_populates="pipeline_stages")
+    owner: Mapped["User"] = relationship(foreign_keys=[owner_id], back_populates="owned_pipeline_stages")
+
 
 class CandidateBookmark(TimestampedUUIDModel):
     __tablename__ = "candidate_bookmarks"
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     candidate_id: Mapped[UUID] = mapped_column(ForeignKey("candidates.id"), index=True)
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+
+    candidate: Mapped["Candidate"] = relationship(back_populates="bookmarks")
+    owner: Mapped["User"] = relationship(foreign_keys=[owner_id], back_populates="owned_candidate_bookmarks")
+    user: Mapped["User"] = relationship(foreign_keys=[user_id], back_populates="candidate_bookmarks")
 
     __table_args__ = (UniqueConstraint("candidate_id", "user_id", name="uq_candidate_bookmark_user"),)
 
@@ -227,17 +297,24 @@ class RecruiterActivity(TimestampedUUIDModel):
     __tablename__ = "recruiter_activities"
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     candidate_id: Mapped[UUID | None] = mapped_column(ForeignKey("candidates.id"), index=True)
     job_description_id: Mapped[UUID | None] = mapped_column(ForeignKey("job_descriptions.id"), index=True)
     activity_type: Mapped[str] = mapped_column(String(100), index=True)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
+    candidate: Mapped[Optional["Candidate"]] = relationship(back_populates="activities")
+    job_description: Mapped[Optional["JobDescription"]] = relationship(back_populates="activities")
+    owner: Mapped["User"] = relationship(foreign_keys=[owner_id], back_populates="owned_activities")
+    user: Mapped["User"] = relationship(foreign_keys=[user_id], back_populates="activities")
+
 
 class CandidateMatch(TimestampedUUIDModel):
     __tablename__ = "candidate_matches"
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     candidate_id: Mapped[UUID] = mapped_column(ForeignKey("candidates.id"), index=True)
     job_description_id: Mapped[UUID] = mapped_column(ForeignKey("job_descriptions.id"), index=True)
     overall_score: Mapped[float] = mapped_column(Numeric(6, 2), index=True)
@@ -251,6 +328,10 @@ class CandidateMatch(TimestampedUUIDModel):
     explanation: Mapped[str] = mapped_column(Text)
     scoring_version: Mapped[str] = mapped_column(String(64), default="hybrid-v1")
 
+    candidate: Mapped["Candidate"] = relationship(back_populates="matches")
+    job_description: Mapped["JobDescription"] = relationship(back_populates="matches")
+    owner: Mapped["User"] = relationship(foreign_keys=[owner_id], back_populates="owned_matches")
+
     __table_args__ = (
         UniqueConstraint("candidate_id", "job_description_id", name="uq_candidate_match_job"),
         Index("ix_candidate_matches_job_score", "job_description_id", "overall_score"),
@@ -261,6 +342,7 @@ class RankingFeedback(TimestampedUUIDModel):
     __tablename__ = "ranking_feedback"
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     candidate_id: Mapped[UUID] = mapped_column(ForeignKey("candidates.id"), index=True)
     job_description_id: Mapped[UUID | None] = mapped_column(ForeignKey("job_descriptions.id"), index=True)
@@ -269,6 +351,11 @@ class RankingFeedback(TimestampedUUIDModel):
     rank_position: Mapped[int | None] = mapped_column(Integer)
     model_version: Mapped[str | None] = mapped_column(String(120), index=True)
     feature_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+
+    candidate: Mapped["Candidate"] = relationship(back_populates="feedback")
+    job_description: Mapped[Optional["JobDescription"]] = relationship(back_populates="feedback")
+    owner: Mapped["User"] = relationship(foreign_keys=[owner_id], back_populates="owned_feedback")
+    user: Mapped["User"] = relationship(foreign_keys=[user_id], back_populates="submitted_feedback")
 
 
 class AuditLog(TimestampedUUIDModel):
@@ -283,6 +370,8 @@ class AuditLog(TimestampedUUIDModel):
     user_agent: Mapped[str | None] = mapped_column(String(512))
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
+    user: Mapped[Optional["User"]] = relationship(foreign_keys=[user_id], back_populates="audit_logs")
+
 
 class APIKey(TimestampedUUIDModel):
     __tablename__ = "api_keys"
@@ -293,6 +382,8 @@ class APIKey(TimestampedUUIDModel):
     key_hash: Mapped[str] = mapped_column(String(255), unique=True)
     scopes: Mapped[list[str]] = mapped_column(JSONB, default=list)
     last_used_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True))
+
+    organization: Mapped[Organization] = relationship()
 
 
 class TenantQuota(TimestampedUUIDModel):
@@ -305,6 +396,8 @@ class TenantQuota(TimestampedUUIDModel):
     monthly_vector_query_limit: Mapped[int] = mapped_column(Integer, default=10000)
     usage_counters: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
+    organization: Mapped[Organization] = relationship()
+
 
 class RecruiterConversation(TimestampedUUIDModel):
     __tablename__ = "recruiter_conversations"
@@ -313,6 +406,9 @@ class RecruiterConversation(TimestampedUUIDModel):
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     title: Mapped[str] = mapped_column(String(255))
     memory: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+
+    user: Mapped["User"] = relationship(foreign_keys=[user_id], back_populates="conversations")
+    messages: Mapped[list["RecruiterMessage"]] = relationship(back_populates="conversation")
 
 
 class RecruiterMessage(TimestampedUUIDModel):
@@ -324,19 +420,25 @@ class RecruiterMessage(TimestampedUUIDModel):
     content: Mapped[str] = mapped_column(Text)
     citations: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
 
+    conversation: Mapped[RecruiterConversation] = relationship(back_populates="messages")
+
 
 class AnalyticsSnapshot(TimestampedUUIDModel):
     __tablename__ = "analytics_snapshots"
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     snapshot_type: Mapped[str] = mapped_column(String(100), index=True)
     metrics: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+
+    owner: Mapped["User"] = relationship(foreign_keys=[owner_id], back_populates="analytics_snapshots")
 
 
 class ATSScore(TimestampedUUIDModel):
     __tablename__ = "ats_scores"
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     candidate_id: Mapped[UUID] = mapped_column(ForeignKey("candidates.id"), index=True)
     job_description_id: Mapped[UUID] = mapped_column(ForeignKey("job_descriptions.id"), index=True)
     resume_id: Mapped[UUID] = mapped_column(ForeignKey("resumes.id"), index=True)
@@ -346,6 +448,11 @@ class ATSScore(TimestampedUUIDModel):
     recommendations: Mapped[list[str]] = mapped_column(JSONB, default=list)
     explanation: Mapped[str | None] = mapped_column(Text)
     scoring_version: Mapped[str] = mapped_column(String(64), default="ats-job-context-v1")
+
+    candidate: Mapped["Candidate"] = relationship(back_populates="ats_scores")
+    job_description: Mapped["JobDescription"] = relationship(back_populates="ats_scores")
+    resume: Mapped["Resume"] = relationship(back_populates="ats_scores")
+    owner: Mapped["User"] = relationship(foreign_keys=[owner_id], back_populates="owned_ats_scores")
 
     __table_args__ = (
         UniqueConstraint("candidate_id", "job_description_id", name="uq_ats_score_candidate_job"),
@@ -357,6 +464,7 @@ class LLMUsageLog(TimestampedUUIDModel):
     __tablename__ = "llm_usage_logs"
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    owner_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True)
     user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True)
     provider: Mapped[str] = mapped_column(String(50), index=True)
     model: Mapped[str] = mapped_column(String(120), index=True)
@@ -365,11 +473,18 @@ class LLMUsageLog(TimestampedUUIDModel):
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
     estimated_cost_usd: Mapped[float] = mapped_column(Numeric(10, 6), default=0)
 
+    owner: Mapped[Optional["User"]] = relationship(foreign_keys=[owner_id], back_populates="owned_llm_usage_logs")
+    user: Mapped[Optional["User"]] = relationship(foreign_keys=[user_id], back_populates="llm_usage_logs")
+
 
 class ResumeProcessingEvent(TimestampedUUIDModel):
     __tablename__ = "resume_processing_events"
 
     organization_id: Mapped[UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     resume_id: Mapped[UUID] = mapped_column(ForeignKey("resumes.id"), index=True)
     event_type: Mapped[str] = mapped_column(String(100), index=True)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+
+    resume: Mapped["Resume"] = relationship(back_populates="processing_events")
+    owner: Mapped["User"] = relationship(foreign_keys=[owner_id], back_populates="owned_resume_processing_events")

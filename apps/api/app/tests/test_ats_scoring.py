@@ -9,11 +9,13 @@ from app.services.ats_scoring_service import ATSScoringService
 @pytest.mark.asyncio
 async def test_ats_scoring_detects_sections():
     organization_id = uuid4()
-    candidate = Candidate(id=uuid4(), organization_id=organization_id, full_name="Jane Doe")
+    owner_id = uuid4()
+    candidate = Candidate(id=uuid4(), organization_id=organization_id, owner_id=owner_id, full_name="Jane Doe")
     job = JobDescription(
         id=uuid4(),
         organization_id=organization_id,
-        created_by_user_id=uuid4(),
+        owner_id=owner_id,
+        created_by_user_id=owner_id,
         title="Backend Engineer",
         description="FastAPI PostgreSQL Docker",
         required_skills=["fastapi", "postgresql"],
@@ -24,8 +26,9 @@ async def test_ats_scoring_detects_sections():
     resume = Resume(
         id=uuid4(),
         organization_id=organization_id,
+        owner_id=owner_id,
         candidate_id=candidate.id,
-        uploaded_by_user_id=uuid4(),
+        uploaded_by_user_id=owner_id,
         original_filename="resume.pdf",
         content_type="application/pdf",
         storage_key="x",

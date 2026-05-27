@@ -16,9 +16,10 @@ class PipelineStageError(RuntimeError):
 
 
 class PipelineTrace:
-    def __init__(self, db: AsyncSession, organization_id, resume_id) -> None:
+    def __init__(self, db: AsyncSession, organization_id, resume_id, owner_id=None) -> None:
         self.db = db
         self.organization_id = organization_id
+        self.owner_id = owner_id
         self.resume_id = resume_id
 
     async def success(self, stage: str, started_at: float, payload: dict[str, Any] | None = None) -> None:
@@ -42,6 +43,7 @@ class PipelineTrace:
         self.db.add(
             ResumeProcessingEvent(
                 organization_id=self.organization_id,
+                owner_id=self.owner_id,
                 resume_id=self.resume_id,
                 event_type=f"resume.{stage}.{status}",
                 payload={

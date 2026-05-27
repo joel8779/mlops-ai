@@ -41,12 +41,22 @@ class DeleteWorkflowService:
 
     async def delete_resume(self, resume: Resume) -> None:
         now = datetime.now(timezone.utc)
-        point_ids = await self._candidate_point_ids(resume_id=resume.id)
+        point_ids = await self._candidate_point_ids(resume.organization_id, resume_id=resume.id)
         self.embedding_service.delete_candidate_points(point_ids)
-        await self.db.execute(delete(CandidateEmbedding).where(CandidateEmbedding.resume_id == resume.id))
+        await self.db.execute(
+            delete(CandidateEmbedding).where(
+                CandidateEmbedding.organization_id == resume.organization_id,
+                CandidateEmbedding.resume_id == resume.id,
+            )
+        )
         if await self._table_has_column("ats_scores", "resume_id"):
-            await self.db.execute(delete(ATSScore).where(ATSScore.resume_id == resume.id))
-        await self.db.execute(delete(ResumeProcessingEvent).where(ResumeProcessingEvent.resume_id == resume.id))
+            await self.db.execute(delete(ATSScore).where(ATSScore.organization_id == resume.organization_id, ATSScore.resume_id == resume.id))
+        await self.db.execute(
+            delete(ResumeProcessingEvent).where(
+                ResumeProcessingEvent.organization_id == resume.organization_id,
+                ResumeProcessingEvent.resume_id == resume.id,
+            )
+        )
         try:
             self.storage.delete_object(resume.storage_key)
         except Exception:
@@ -56,10 +66,11 @@ class DeleteWorkflowService:
 
     async def delete_candidate(self, candidate: Candidate) -> None:
         now = datetime.now(timezone.utc)
-        point_ids = await self._candidate_point_ids(candidate_id=candidate.id)
+        point_ids = await self._candidate_point_ids(candidate.organization_id, candidate_id=candidate.id)
         resumes = list(
             await self.db.scalars(
                 select(Resume).where(
+                    Resume.organization_id == candidate.organization_id,
                     Resume.candidate_id == candidate.id,
                     Resume.deleted_at.is_(None),
                 )
@@ -69,25 +80,37 @@ class DeleteWorkflowService:
         resume_ids = [resume.id for resume in resumes]
         try:
             self.embedding_service.delete_candidate_points(point_ids)
-            await self._delete_candidate_ats_scores(candidate.id, resume_ids)
-            await self.db.execute(delete(CandidateMatch).where(CandidateMatch.candidate_id == candidate.id))
+            await self._delete_candidate_ats_scores(candidate.organization_id, candidate.id, resume_ids)
             await self.db.execute(
-                delete(CandidatePipelineStage).where(CandidatePipelineStage.candidate_id == candidate.id)
+                delete(CandidateMatch).where(
+                    CandidateMatch.organization_id == candidate.organization_id,
+                    CandidateMatch.candidate_id == candidate.id,
+                )
             )
-            await self.db.execute(delete(CandidateBookmark).where(CandidateBookmark.candidate_id == candidate.id))
-            await self.db.execute(delete(RecruiterNote).where(RecruiterNote.candidate_id == candidate.id))
-            await self.db.execute(delete(RankingFeedback).where(RankingFeedback.candidate_id == candidate.id))
-            await self.db.execute(delete(CandidateSkill).where(CandidateSkill.candidate_id == candidate.id))
-            await self.db.execute(delete(CandidateEmbedding).where(CandidateEmbedding.candidate_id == candidate.id))
+            await self.db.execute(
+                delete(CandidatePipelineStage).where(
+                    CandidatePipelineStage.organization_id == candidate.organization_id,
+                    CandidatePipelineStage.candidate_id == candidate.id,
+                )
+            )
+            await self.db.execute(delete(CandidateBookmark).where(CandidateBookmark.organization_id == candidate.organization_id, CandidateBookmark.candidate_id == candidate.id))
+            await self.db.execute(delete(RecruiterNote).where(RecruiterNote.organization_id == candidate.organization_id, RecruiterNote.candidate_id == candidate.id))
+            await self.db.execute(delete(RankingFeedback).where(RankingFeedback.organization_id == candidate.organization_id, RankingFeedback.candidate_id == candidate.id))
+            await self.db.execute(delete(CandidateSkill).where(CandidateSkill.organization_id == candidate.organization_id, CandidateSkill.candidate_id == candidate.id))
+            await self.db.execute(delete(CandidateEmbedding).where(CandidateEmbedding.organization_id == candidate.organization_id, CandidateEmbedding.candidate_id == candidate.id))
             if resume_ids:
                 await self.db.execute(
                     delete(ResumeProcessingEvent).where(
+                        ResumeProcessingEvent.organization_id == candidate.organization_id,
                         ResumeProcessingEvent.resume_id.in_(resume_ids)
                     )
                 )
             await self.db.execute(
                 update(RecruiterActivity)
-                .where(RecruiterActivity.candidate_id == candidate.id)
+                .where(
+                    RecruiterActivity.organization_id == candidate.organization_id,
+                    RecruiterActivity.candidate_id == candidate.id,
+                )
                 .values(candidate_id=None)
             )
             for resume in resumes:
@@ -117,26 +140,37 @@ class DeleteWorkflowService:
         self._delete_storage_best_effort(candidate, storage_keys)
 
     async def delete_job(self, job: JobDescription) -> None:
-        point_ids = await self._job_point_ids(job.id)
+        point_ids = await self._job_point_ids(job.organization_id, job.id)
         self.embedding_service.delete_job_points(point_ids)
         await self.db.execute(
-            delete(JobDescriptionEmbedding).where(JobDescriptionEmbedding.job_description_id == job.id)
+            delete(JobDescriptionEmbedding).where(
+                JobDescriptionEmbedding.organization_id == job.organization_id,
+                JobDescriptionEmbedding.job_description_id == job.id,
+            )
         )
         if await self._table_has_column("ats_scores", "job_description_id"):
-            await self.db.execute(delete(ATSScore).where(ATSScore.job_description_id == job.id))
-        await self.db.execute(delete(CandidateMatch).where(CandidateMatch.job_description_id == job.id))
-        await self.db.execute(delete(CandidatePipelineStage).where(CandidatePipelineStage.job_description_id == job.id))
-        await self.db.execute(delete(RankingFeedback).where(RankingFeedback.job_description_id == job.id))
+            await self.db.execute(delete(ATSScore).where(ATSScore.organization_id == job.organization_id, ATSScore.job_description_id == job.id))
+        await self.db.execute(delete(CandidateMatch).where(CandidateMatch.organization_id == job.organization_id, CandidateMatch.job_description_id == job.id))
+        await self.db.execute(delete(CandidatePipelineStage).where(CandidatePipelineStage.organization_id == job.organization_id, CandidatePipelineStage.job_description_id == job.id))
+        await self.db.execute(delete(RankingFeedback).where(RankingFeedback.organization_id == job.organization_id, RankingFeedback.job_description_id == job.id))
         await self.db.execute(
             update(RecruiterActivity)
-            .where(RecruiterActivity.job_description_id == job.id)
+            .where(
+                RecruiterActivity.organization_id == job.organization_id,
+                RecruiterActivity.job_description_id == job.id,
+            )
             .values(job_description_id=None)
         )
         job.deleted_at = datetime.now(timezone.utc)
         await self.db.commit()
 
-    async def _candidate_point_ids(self, candidate_id: UUID | None = None, resume_id: UUID | None = None) -> list[str]:
-        query = select(CandidateEmbedding.qdrant_point_id)
+    async def _candidate_point_ids(
+        self,
+        organization_id: UUID,
+        candidate_id: UUID | None = None,
+        resume_id: UUID | None = None,
+    ) -> list[str]:
+        query = select(CandidateEmbedding.qdrant_point_id).where(CandidateEmbedding.organization_id == organization_id)
         if candidate_id:
             query = query.where(CandidateEmbedding.candidate_id == candidate_id)
         if resume_id:
@@ -144,18 +178,21 @@ class DeleteWorkflowService:
         result = await self.db.execute(query)
         return [row[0] for row in result.all()]
 
-    async def _job_point_ids(self, job_id: UUID) -> list[str]:
+    async def _job_point_ids(self, organization_id: UUID, job_id: UUID) -> list[str]:
         result = await self.db.execute(
-            select(JobDescriptionEmbedding.qdrant_point_id).where(JobDescriptionEmbedding.job_description_id == job_id)
+            select(JobDescriptionEmbedding.qdrant_point_id).where(
+                JobDescriptionEmbedding.organization_id == organization_id,
+                JobDescriptionEmbedding.job_description_id == job_id,
+            )
         )
         return [row[0] for row in result.all()]
 
-    async def _delete_candidate_ats_scores(self, candidate_id: UUID, resume_ids: list[UUID]) -> None:
+    async def _delete_candidate_ats_scores(self, organization_id: UUID, candidate_id: UUID, resume_ids: list[UUID]) -> None:
         if await self._table_has_column("ats_scores", "candidate_id"):
-            await self.db.execute(delete(ATSScore).where(ATSScore.candidate_id == candidate_id))
+            await self.db.execute(delete(ATSScore).where(ATSScore.organization_id == organization_id, ATSScore.candidate_id == candidate_id))
             return
         if resume_ids and await self._table_has_column("ats_scores", "resume_id"):
-            await self.db.execute(delete(ATSScore).where(ATSScore.resume_id.in_(resume_ids)))
+            await self.db.execute(delete(ATSScore).where(ATSScore.organization_id == organization_id, ATSScore.resume_id.in_(resume_ids)))
 
     async def _table_has_column(self, table_name: str, column_name: str) -> bool:
         bind = self.db.get_bind()

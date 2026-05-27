@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Activity,
   BarChart3,
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 import AppShell from "@/components/app-shell";
 import { analyticsApi, candidatesApi, resumesApi, workspaceApi } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
 const pipelineLabels: Record<string, string> = {
   uploaded: "Uploaded",
@@ -31,6 +33,8 @@ const pipelineLabels: Record<string, string> = {
 };
 
 export default function DashboardPage() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [activation, setActivation] = useState<any>(null);
   const [analytics, setAnalytics] = useState<any>(null);
   const [candidates, setCandidates] = useState<any[]>([]);
@@ -39,7 +43,15 @@ export default function DashboardPage() {
   const [demoLoading, setDemoLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace("/login");
+    }
+  }, [user, authLoading, router]);
+
   const load = async () => {
+    if (!user) return;
     setLoading(true);
     setError("");
     try {
@@ -67,8 +79,10 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    load();
-  }, []);
+    if (user) {
+      load();
+    }
+  }, [user]);
 
   const loadDemo = async () => {
     setDemoLoading(true);

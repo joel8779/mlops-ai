@@ -50,7 +50,11 @@ async def load_demo_workspace(auth: AuthContext = Depends(get_current_auth), db:
     existing = await db.scalar(
         select(func.count())
         .select_from(Candidate)
-        .where(Candidate.organization_id == auth.organization_id, Candidate.source == "demo_workspace")
+        .where(
+            Candidate.organization_id == auth.organization_id,
+            Candidate.owner_id == auth.user_id,
+            Candidate.source == "demo_workspace",
+        )
     )
     if existing:
         return DemoWorkspaceResponse(
@@ -74,6 +78,7 @@ async def load_demo_workspace(auth: AuthContext = Depends(get_current_auth), db:
         text = resume_text_by_candidate[index]
         resume = Resume(
             organization_id=auth.organization_id,
+            owner_id=auth.user_id,
             candidate_id=candidate.id,
             uploaded_by_user_id=auth.user_id,
             original_filename=f"{candidate.full_name.replace(' ', '_').lower()}_resume.pdf",
@@ -98,6 +103,7 @@ async def load_demo_workspace(auth: AuthContext = Depends(get_current_auth), db:
             db.add(
                 CandidateSkill(
                     organization_id=auth.organization_id,
+                    owner_id=auth.user_id,
                     candidate_id=candidate.id,
                     normalized_skill=skill.lower(),
                     raw_skill=skill,
@@ -113,6 +119,7 @@ async def load_demo_workspace(auth: AuthContext = Depends(get_current_auth), db:
             db.add(
                 CandidateEmbedding(
                     organization_id=auth.organization_id,
+                    owner_id=auth.user_id,
                     candidate_id=candidate.id,
                     resume_id=resume.id,
                     qdrant_point_id=point_id,
@@ -131,6 +138,7 @@ async def load_demo_workspace(auth: AuthContext = Depends(get_current_auth), db:
             db.add(
                 ResumeProcessingEvent(
                     organization_id=auth.organization_id,
+                    owner_id=auth.user_id,
                     resume_id=resume.id,
                     event_type=event_type,
                     payload={"label": label, "candidate_name": candidate.full_name, "demo": True},
@@ -141,6 +149,7 @@ async def load_demo_workspace(auth: AuthContext = Depends(get_current_auth), db:
         db.add(
             CandidatePipelineStage(
                 organization_id=auth.organization_id,
+                owner_id=auth.user_id,
                 candidate_id=candidate.id,
                 job_description_id=jobs[index % len(jobs)].id,
                 stage=stage,
@@ -160,6 +169,7 @@ async def load_demo_workspace(auth: AuthContext = Depends(get_current_auth), db:
             db.add(
                 CandidateMatch(
                     organization_id=auth.organization_id,
+                    owner_id=auth.user_id,
                     candidate_id=candidate.id,
                     job_description_id=job.id,
                     overall_score=score,
@@ -181,9 +191,10 @@ async def load_demo_workspace(auth: AuthContext = Depends(get_current_auth), db:
                 db.add(
                     ATSScore(
                         organization_id=auth.organization_id,
+                        owner_id=auth.user_id,
                         candidate_id=candidate.id,
                         job_description_id=job.id,
-                        resume_id=(await _latest_demo_resume_id(db, candidate.id)),
+                        resume_id=(await _latest_demo_resume_id(db, auth.organization_id, auth.user_id, candidate.id)),
                         ats_score=score,
                         components=[
                             {"name": "semantic_similarity", "score": semantic, "weight": 40, "evidence": ["Demo semantic alignment"]},
@@ -201,6 +212,7 @@ async def load_demo_workspace(auth: AuthContext = Depends(get_current_auth), db:
         db.add(
             RecruiterActivity(
                 organization_id=auth.organization_id,
+                owner_id=auth.user_id,
                 user_id=auth.user_id,
                 candidate_id=UUID(payload["candidate_id"]) if payload.get("candidate_id") else None,
                 job_description_id=UUID(payload["job_description_id"]) if payload.get("job_description_id") else None,
@@ -209,10 +221,11 @@ async def load_demo_workspace(auth: AuthContext = Depends(get_current_auth), db:
             )
         )
 
-    qdrant_status = _upsert_demo_vectors(auth.organization_id, candidates, resume_text_by_candidate)
+    qdrant_status = _upsert_demo_vectors(auth.organization_id, auth.user_id, candidates, resume_text_by_candidate)
     db.add(
         RecruiterActivity(
             organization_id=auth.organization_id,
+            owner_id=auth.user_id,
             user_id=auth.user_id,
             activity_type="demo.workspace_loaded",
             payload={"qdrant_status": qdrant_status, "candidate_count": len(candidates), "job_count": len(jobs)},
@@ -239,7 +252,7 @@ async def _workspace_activation(db: AsyncSession, auth: AuthContext) -> Workspac
     )
     pipeline_rows = await db.execute(
         select(Resume.status, func.count())
-        .where(Resume.organization_id == auth.organization_id)
+        .where(Resume.organization_id == auth.organization_id, Resume.owner_id == auth.user_id)
         .group_by(Resume.status)
     )
     pipeline_values = {status.value: int(count) for status, count in pipeline_rows.all()}
@@ -258,13 +271,22 @@ async def _workspace_activation(db: AsyncSession, auth: AuthContext) -> Workspac
 
 
 async def _count(db: AsyncSession, auth: AuthContext, model) -> int:
-    value = await db.scalar(select(func.count()).select_from(model).where(model.organization_id == auth.organization_id))
+    value = await db.scalar(
+        select(func.count()).select_from(model).where(
+            model.organization_id == auth.organization_id,
+            model.owner_id == auth.user_id,
+        )
+    )
     return int(value or 0)
 
 
 async def _count_status(db: AsyncSession, auth: AuthContext, status: ResumeStatus) -> int:
     value = await db.scalar(
-        select(func.count()).select_from(Resume).where(Resume.organization_id == auth.organization_id, Resume.status == status)
+        select(func.count()).select_from(Resume).where(
+            Resume.organization_id == auth.organization_id,
+            Resume.owner_id == auth.user_id,
+            Resume.status == status,
+        )
     )
     return int(value or 0)
 
@@ -281,7 +303,10 @@ async def _activity(db: AsyncSession, auth: AuthContext) -> list[ActivityEvent]:
             ResumeProcessingEvent.payload,
             ResumeProcessingEvent.created_at,
         )
-        .where(ResumeProcessingEvent.organization_id == auth.organization_id)
+        .where(
+            ResumeProcessingEvent.organization_id == auth.organization_id,
+            ResumeProcessingEvent.owner_id == auth.user_id,
+        )
         .order_by(desc(ResumeProcessingEvent.created_at))
         .limit(20)
     )
@@ -296,7 +321,7 @@ async def _activity(db: AsyncSession, auth: AuthContext) -> list[ActivityEvent]:
             RecruiterActivity.payload,
             RecruiterActivity.created_at,
         )
-        .where(RecruiterActivity.organization_id == auth.organization_id)
+        .where(RecruiterActivity.organization_id == auth.organization_id, RecruiterActivity.owner_id == auth.user_id)
         .order_by(desc(RecruiterActivity.created_at))
         .limit(20)
     )
@@ -323,7 +348,14 @@ async def _match_insights(db: AsyncSession, auth: AuthContext) -> list[MatchInsi
         select(CandidateMatch, Candidate.full_name, JobDescription.title)
         .join(Candidate, Candidate.id == CandidateMatch.candidate_id)
         .join(JobDescription, JobDescription.id == CandidateMatch.job_description_id)
-        .where(CandidateMatch.organization_id == auth.organization_id)
+        .where(
+            CandidateMatch.organization_id == auth.organization_id,
+            CandidateMatch.owner_id == auth.user_id,
+            Candidate.organization_id == auth.organization_id,
+            Candidate.owner_id == auth.user_id,
+            JobDescription.organization_id == auth.organization_id,
+            JobDescription.owner_id == auth.user_id,
+        )
         .order_by(desc(CandidateMatch.overall_score))
         .limit(6)
     )
@@ -342,9 +374,16 @@ async def _match_insights(db: AsyncSession, auth: AuthContext) -> list[MatchInsi
     ]
 
 
-async def _latest_demo_resume_id(db: AsyncSession, candidate_id: UUID) -> UUID:
+async def _latest_demo_resume_id(db: AsyncSession, organization_id: UUID, owner_id: UUID, candidate_id: UUID) -> UUID:
     resume_id = await db.scalar(
-        select(Resume.id).where(Resume.candidate_id == candidate_id).order_by(desc(Resume.created_at)).limit(1)
+        select(Resume.id)
+        .where(
+            Resume.organization_id == organization_id,
+            Resume.owner_id == owner_id,
+            Resume.candidate_id == candidate_id,
+        )
+        .order_by(desc(Resume.created_at))
+        .limit(1)
     )
     if resume_id is None:
         raise RuntimeError("Demo candidate resume was not created")
@@ -374,6 +413,7 @@ def _demo_jobs(auth: AuthContext) -> list[JobDescription]:
     return [
         JobDescription(
             organization_id=auth.organization_id,
+            owner_id=auth.user_id,
             created_by_user_id=auth.user_id,
             title="Staff Backend Platform Engineer",
             description="Own FastAPI services, PostgreSQL reliability, Redis queues, Docker runtime, and Kubernetes delivery for regulated AI workflows.",
@@ -389,6 +429,7 @@ def _demo_jobs(auth: AuthContext) -> list[JobDescription]:
         ),
         JobDescription(
             organization_id=auth.organization_id,
+            owner_id=auth.user_id,
             created_by_user_id=auth.user_id,
             title="Machine Learning Retrieval Engineer",
             description="Build embedding pipelines, semantic retrieval, reranking, and evaluation systems for recruiter intelligence workflows.",
@@ -404,6 +445,7 @@ def _demo_jobs(auth: AuthContext) -> list[JobDescription]:
         ),
         JobDescription(
             organization_id=auth.organization_id,
+            owner_id=auth.user_id,
             created_by_user_id=auth.user_id,
             title="Recruiting Intelligence Product Engineer",
             description="Ship recruiter command-center workflows with Next.js, TypeScript, AI-assisted search, analytics, and dense operational UX.",
@@ -431,6 +473,7 @@ def _demo_candidates(auth: AuthContext) -> list[Candidate]:
     return [
         Candidate(
             organization_id=auth.organization_id,
+            owner_id=auth.user_id,
             full_name=name,
             email=f"{name.lower().replace(' ', '.')}@demo.neuralops.ai",
             location=location,
@@ -467,7 +510,7 @@ def _demo_activities(candidates: list[Candidate], jobs: list[JobDescription]) ->
     ]
 
 
-def _upsert_demo_vectors(organization_id: UUID, candidates: list[Candidate], texts: list[str]) -> str:
+def _upsert_demo_vectors(organization_id: UUID, owner_id: UUID, candidates: list[Candidate], texts: list[str]) -> str:
     try:
         service = EmbeddingService()
         service.ensure_collection()
@@ -480,6 +523,7 @@ def _upsert_demo_vectors(organization_id: UUID, candidates: list[Candidate], tex
                     vector=_deterministic_vector(text),
                     payload={
                         "organization_id": str(organization_id),
+                        "owner_id": str(owner_id),
                         "candidate_id": str(candidate.id),
                         "resume_id": None,
                         "chunk_index": 0,

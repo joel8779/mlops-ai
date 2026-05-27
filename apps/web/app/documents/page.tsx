@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { DragEvent, useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle, Cpu, Database, FileText, Loader2, RefreshCcw, ScanLine, Search, Trash2, UploadCloud, Users, Zap } from "lucide-react";
 import AppShell from "@/components/app-shell";
 import { API_BASE_URL, getAccessToken, resumesApi } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
 type Resume = {
   id: string;
@@ -22,10 +24,19 @@ type UploadState = "idle" | "ready" | "uploading" | "processing" | "success" | "
 
 const terminalStatuses = new Set(["parsed", "embedded", "failed"]);
 
-function uploadResumeWithProgress(file: File, onProgress: (progress: number) => void): Promise<Resume> {
+function uploadResumeWithProgress(
+  file: File,
+  candidate: { candidate_name: string; email: string; phone: string; years_experience: string; location: string },
+  onProgress: (progress: number) => void
+): Promise<Resume> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const formData = new FormData();
+    formData.append("candidate_name", candidate.candidate_name);
+    if (candidate.email) formData.append("email", candidate.email);
+    if (candidate.phone) formData.append("phone", candidate.phone);
+    if (candidate.years_experience) formData.append("years_experience", candidate.years_experience);
+    if (candidate.location) formData.append("location", candidate.location);
     formData.append("file", file);
     xhr.open("POST", `${API_BASE_URL}/resumes/upload`);
     const token = getAccessToken();
@@ -50,15 +61,32 @@ function uploadResumeWithProgress(file: File, onProgress: (progress: number) => 
 }
 
 export default function DocumentsPage() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [documents, setDocuments] = useState<Resume[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [state, setState] = useState<UploadState>("idle");
   const [progress, setProgress] = useState(0);
   const [currentResume, setCurrentResume] = useState<Resume | null>(null);
+  const [candidateForm, setCandidateForm] = useState({
+    candidate_name: "",
+    email: "",
+    phone: "",
+    years_experience: "",
+    location: "",
+  });
   const [loadingList, setLoadingList] = useState(true);
   const [error, setError] = useState("");
 
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace("/login");
+    }
+  }, [user, authLoading, router]);
+
   const loadDocuments = useCallback(async () => {
+    if (!user) return;
     setLoadingList(true);
     try {
       setDocuments((await resumesApi.list()) as Resume[]);
@@ -67,11 +95,13 @@ export default function DocumentsPage() {
     } finally {
       setLoadingList(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
-    loadDocuments();
-  }, [loadDocuments]);
+    if (user) {
+      loadDocuments();
+    }
+  }, [user, loadDocuments]);
 
   const selectFile = (selectedFile: File) => {
     const validTypes = [
@@ -121,10 +151,15 @@ export default function DocumentsPage() {
 
   const upload = async () => {
     if (!file) return;
+    if (!candidateForm.candidate_name.trim()) {
+      setError("Enter the candidate name before uploading.");
+      setState("error");
+      return;
+    }
     setState("uploading");
     setError("");
     try {
-      const uploaded = await uploadResumeWithProgress(file, setProgress);
+      const uploaded = await uploadResumeWithProgress(file, candidateForm, setProgress);
       setCurrentResume(uploaded);
       setState("processing");
       await pollResume(uploaded.id);
@@ -186,6 +221,41 @@ export default function DocumentsPage() {
                 <div className="mt-4 font-medium">Drop candidate documents here</div>
                 <div className="mt-1 text-sm text-foreground-muted">PDF or DOCX resumes, up to 10MB</div>
               </label>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <input
+                className="ops-input rounded-md px-3 py-3 text-sm sm:col-span-2"
+                value={candidateForm.candidate_name}
+                onChange={(event) => setCandidateForm((current) => ({ ...current, candidate_name: event.target.value }))}
+                placeholder="Candidate name"
+              />
+              <input
+                className="ops-input rounded-md px-3 py-3 text-sm"
+                value={candidateForm.email}
+                onChange={(event) => setCandidateForm((current) => ({ ...current, email: event.target.value }))}
+                placeholder="Email"
+              />
+              <input
+                className="ops-input rounded-md px-3 py-3 text-sm"
+                value={candidateForm.phone}
+                onChange={(event) => setCandidateForm((current) => ({ ...current, phone: event.target.value }))}
+                placeholder="Phone"
+              />
+              <input
+                className="ops-input rounded-md px-3 py-3 text-sm"
+                value={candidateForm.years_experience}
+                onChange={(event) => setCandidateForm((current) => ({ ...current, years_experience: event.target.value }))}
+                placeholder="Years experience"
+                type="number"
+                min="0"
+              />
+              <input
+                className="ops-input rounded-md px-3 py-3 text-sm"
+                value={candidateForm.location}
+                onChange={(event) => setCandidateForm((current) => ({ ...current, location: event.target.value }))}
+                placeholder="Location"
+              />
             </div>
 
             {file && (

@@ -62,7 +62,6 @@ class CandidateExtractionService:
             schema = {
                 "type": "object",
                 "properties": {
-                    "full_name": {"type": "string"},
                     "email": {"type": "string"},
                     "phone": {"type": "string"},
                     "skills": {"type": "array", "items": {"type": "string"}},
@@ -74,15 +73,15 @@ class CandidateExtractionService:
                 },
             }
             result = await provider.complete_structured(
-                prompt=f"Extract recruiting intelligence from this resume text. Return only factual evidence.\n\n{text[:12000]}",
+                prompt=f"Extract recruiting intelligence from this resume text. Do not infer or return candidate identity. Return only factual evidence.\n\n{text[:12000]}",
                 schema=schema,
-                system="You are a recruiting intelligence extractor. Use null or empty arrays when evidence is absent.",
+                system="You extract recruiting intelligence only. Do not determine candidate names. Use null or empty arrays when evidence is absent.",
                 options=GenerationOptions(temperature=0.0, max_output_tokens=1200),
                 feature="resume_structured_extraction",
             )
             data = result.structured_data or json.loads(result.text)
             return CandidateExtraction(
-                full_name=str(data.get("full_name") or "Candidate Profile").strip(),
+                full_name="Candidate Profile",
                 email=data.get("email") or None,
                 phone=data.get("phone") or None,
                 skills=self._clean_list(data.get("skills")),
@@ -123,8 +122,6 @@ class CandidateExtractionService:
         )
 
     def _merge(self, gemini: CandidateExtraction, fallback: CandidateExtraction) -> CandidateExtraction:
-        if gemini.full_name == "Candidate Profile":
-            gemini.full_name = fallback.full_name
         gemini.email = gemini.email or fallback.email
         gemini.phone = gemini.phone or fallback.phone
         gemini.skills = sorted(set(gemini.skills) | set(fallback.skills))

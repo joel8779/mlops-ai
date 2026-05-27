@@ -35,6 +35,7 @@ async def _parse_resume(resume_id: UUID) -> None:
         db.add(
             ResumeProcessingEvent(
                 organization_id=resume.organization_id,
+                owner_id=resume.owner_id,
                 resume_id=resume.id,
                 event_type="resume.parsing_started",
                 payload={},
@@ -64,6 +65,7 @@ async def _parse_resume(resume_id: UUID) -> None:
         db.add(
             ResumeProcessingEvent(
                 organization_id=resume.organization_id,
+                owner_id=resume.owner_id,
                 resume_id=resume.id,
                 event_type=event_type,
                 payload=event_payload,

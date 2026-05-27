@@ -2,11 +2,15 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowUpRight, BriefcaseBusiness, Loader2, Plus, RefreshCcw, Trash2, UploadCloud } from "lucide-react";
 import AppShell from "@/components/app-shell";
 import { jobsApi, workspaceApi } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
 export default function JobsPage() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [jobs, setJobs] = useState<any[]>([]);
   const [workspace, setWorkspace] = useState<any>(null);
   const [title, setTitle] = useState("");
@@ -17,7 +21,15 @@ export default function JobsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace("/login");
+    }
+  }, [user, authLoading, router]);
+
   const loadJobs = async () => {
+    if (!user) return;
     setLoading(true);
     setError("");
     try {
@@ -32,8 +44,10 @@ export default function JobsPage() {
   };
 
   useEffect(() => {
-    loadJobs();
-  }, []);
+    if (user) {
+      loadJobs();
+    }
+  }, [user]);
 
   const createJob = async (event: FormEvent) => {
     event.preventDefault();

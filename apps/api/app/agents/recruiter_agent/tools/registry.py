@@ -32,7 +32,7 @@ class Tool:
 class ToolRegistry:
     """Registry of available tools for the agent."""
 
-    def __init__(self, db: AsyncSession, organization_id: Any) -> None:
+    def __init__(self, db: AsyncSession, organization_id: Any, owner_id: Any | None = None) -> None:
         """Initialize tool registry.
 
         Args:
@@ -41,13 +41,14 @@ class ToolRegistry:
         """
         self.db = db
         self.organization_id = organization_id
+        self.owner_id = owner_id
         self._tools = {
-            AgentAction.SEARCH_CANDIDATES: CandidateSearchTool(db, organization_id),
-            AgentAction.COMPARE_CANDIDATES: CandidateCompareTool(db, organization_id),
-            AgentAction.GENERATE_OUTREACH: OutreachGeneratorTool(db, organization_id),
-            AgentAction.SUGGEST_INTERVIEW: InterviewPlannerTool(db, organization_id),
-            AgentAction.EXPLAIN_RANKING: RankingExplainerTool(db, organization_id),
-            AgentAction.ANALYZE_SKILLS: SkillAnalyzerTool(db, organization_id),
+            AgentAction.SEARCH_CANDIDATES: CandidateSearchTool(db, organization_id, owner_id),
+            AgentAction.COMPARE_CANDIDATES: CandidateCompareTool(db, organization_id, owner_id),
+            AgentAction.GENERATE_OUTREACH: OutreachGeneratorTool(db, organization_id, owner_id),
+            AgentAction.SUGGEST_INTERVIEW: InterviewPlannerTool(db, organization_id, owner_id),
+            AgentAction.EXPLAIN_RANKING: RankingExplainerTool(db, organization_id, owner_id),
+            AgentAction.ANALYZE_SKILLS: SkillAnalyzerTool(db, organization_id, owner_id),
         }
 
     def get_tool(self, action: AgentAction) -> Optional[Tool]:

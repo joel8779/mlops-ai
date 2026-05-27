@@ -59,6 +59,7 @@ class AutonomousWorkflowExecutor:
                     artifacts=artifacts,
                     step_type=step.step_type,
                     organization_id=organization_id,
+                    recruiter_id=recruiter_id,
                     query=query,
                     context=context,
                     skill_weights=profile.skill_weights,
@@ -72,6 +73,7 @@ class AutonomousWorkflowExecutor:
         artifacts: dict[str, Any],
         step_type: WorkflowStepType,
         organization_id: UUID,
+        recruiter_id: UUID,
         query: str,
         context: dict[str, Any],
         skill_weights: dict[str, float],
@@ -86,6 +88,7 @@ class AutonomousWorkflowExecutor:
                     artifacts["candidates"] = await retriever.search(
                         query=query,
                         organization_id=organization_id,
+                        owner_id=recruiter_id,
                         job_description_id=context.get("job_id") or context.get("job_description_id"),
                         limit=int(context.get("limit", 10)),
                     )

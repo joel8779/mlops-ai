@@ -25,7 +25,29 @@ logger = get_logger(__name__)
     retry_kwargs={"max_retries": 3},
 )
 def parse_resume_task(resume_id: str) -> None:
-    asyncio.run(_parse_resume(UUID(resume_id)))
+    task_id = parse_resume_task.request.id
+    logger.info(
+        "celery_task_started",
+        task_id=task_id,
+        resume_id=resume_id,
+        retry_count=parse_resume_task.request.retries,
+    )
+    try:
+        asyncio.run(_parse_resume(UUID(resume_id)))
+        logger.info(
+            "celery_task_completed",
+            task_id=task_id,
+            resume_id=resume_id,
+        )
+    except Exception as exc:
+        logger.exception(
+            "celery_task_failed",
+            task_id=task_id,
+            resume_id=resume_id,
+            retry_count=parse_resume_task.request.retries,
+            error=str(exc),
+        )
+        raise
 
 
 async def _parse_resume(resume_id: UUID) -> None:
@@ -39,13 +61,14 @@ async def _parse_resume(resume_id: UUID) -> None:
         db.add(
             ResumeProcessingEvent(
                 organization_id=resume.organization_id,
+                owner_id=resume.owner_id,
                 resume_id=resume.id,
                 event_type="resume.parsing_started",
                 payload={},
             )
         )
         await db.commit()
-        trace = PipelineTrace(db, resume.organization_id, resume.id)
+        trace = PipelineTrace(db, resume.organization_id, resume.id, resume.owner_id)
         current_stage = "pipeline"
         started = perf_counter()
 
@@ -60,6 +83,13 @@ async def _parse_resume(resume_id: UUID) -> None:
             current_stage = "document_extraction"
             started = perf_counter()
             parsed = ExtractionService().parse(payload, resume.content_type)
+            logger.info(
+                "resume_extraction_parsed",
+                resume_id=str(resume.id),
+                text_length=len(parsed.text),
+                parser_version=parsed.parser_version,
+                metadata_keys=list(parsed.metadata.keys()),
+            )
             await trace.success(
                 "document_extraction",
                 started,
@@ -69,11 +99,29 @@ async def _parse_resume(resume_id: UUID) -> None:
             resume.parser_version = parsed.parser_version
             resume.extracted_text = parsed.text
             resume.metadata_json = {**resume.metadata_json, "parse": parsed.metadata}
+            # Commit extracted_text to DB before proceeding
+            await db.commit()
+            await db.refresh(resume)
+            logger.info(
+                "resume_extraction_persisted",
+                resume_id=str(resume.id),
+                extracted_text_length=len(resume.extracted_text or ""),
+                db_status=resume.status.value,
+            )
 
             current_stage = "candidate_extraction"
             started = perf_counter()
             candidate = await _ensure_candidate(db, resume)
             extraction = await CandidateExtractionService().extract(parsed.text, resume.original_filename, parsed.metadata)
+            logger.info(
+                "candidate_extraction_completed",
+                resume_id=str(resume.id),
+                candidate_id=str(candidate.id),
+                skill_count=len(extraction.skills),
+                education_count=len(extraction.education),
+                experience_count=len(extraction.experience),
+                source=extraction.source,
+            )
             _hydrate_candidate(candidate, resume, extraction)
             await trace.success(
                 "candidate_extraction",
@@ -93,6 +141,12 @@ async def _parse_resume(resume_id: UUID) -> None:
             current_stage = "skill_persistence"
             started = perf_counter()
             skills = await _extract_candidate_skills(db, resume, candidate, extraction.skills)
+            logger.info(
+                "skill_persistence_completed",
+                resume_id=str(resume.id),
+                candidate_id=str(candidate.id),
+                skill_count=len(skills),
+            )
             await trace.success("skill_persistence", started, {"candidate_id": str(candidate.id), "skill_count": len(skills)})
 
             current_stage = "embedding_indexing"
@@ -107,13 +161,21 @@ async def _parse_resume(resume_id: UUID) -> None:
             resume.status = ResumeStatus.embedded
             event_type = "resume.embedded"
             event_payload = {"text_length": len(parsed.text), "metadata": parsed.metadata}
+            logger.info(
+                "resume_pipeline_complete",
+                resume_id=str(resume.id),
+                candidate_id=str(candidate.id),
+                final_status=resume.status.value,
+                extracted_text_length=len(resume.extracted_text or ""),
+                skills_count=len(skills),
+            )
         except Exception as exc:
             logger.exception("resume_parse_failed", resume_id=str(resume_id))
             await db.rollback()
             resume = await db.get(Resume, resume_id)
             if resume is None:
                 return
-            trace = PipelineTrace(db, resume.organization_id, resume.id)
+            trace = PipelineTrace(db, resume.organization_id, resume.id, resume.owner_id)
             await trace.failure(current_stage, started, exc)
             resume.status = ResumeStatus.failed
             resume.parse_error = classify_pipeline_error(current_stage, exc)["message"]
@@ -135,6 +197,7 @@ async def _parse_resume(resume_id: UUID) -> None:
             db.add(
                 ResumeProcessingEvent(
                     organization_id=resume.organization_id,
+                    owner_id=resume.owner_id,
                     resume_id=resume.id,
                     event_type=event_type,
                     payload=event_payload,
@@ -160,6 +223,7 @@ async def _parse_resume(resume_id: UUID) -> None:
                 db.add(
                     ResumeProcessingEvent(
                         organization_id=resume.organization_id,
+                        owner_id=resume.owner_id,
                         resume_id=resume.id,
                         event_type="resume.db_persistence.failure",
                         payload={
@@ -182,6 +246,8 @@ async def _ensure_candidate(db, resume: Resume) -> Candidate:
 
     candidate = Candidate(
         organization_id=resume.organization_id,
+        owner_id=resume.owner_id,
+        full_name="Imported Candidate",
         source="resume_upload",
         raw_profile={"resume_id": str(resume.id)},
     )
@@ -192,8 +258,6 @@ async def _ensure_candidate(db, resume: Resume) -> Candidate:
 
 
 def _hydrate_candidate(candidate: Candidate, resume: Resume, extraction: CandidateExtraction) -> None:
-    if not candidate.full_name or candidate.full_name == "Candidate Profile" or extraction.full_name != "Candidate Profile":
-        candidate.full_name = extraction.full_name
     candidate.email = candidate.email or extraction.email
     candidate.phone = candidate.phone or extraction.phone
     candidate.summary = extraction.summary or candidate.summary
@@ -202,6 +266,7 @@ def _hydrate_candidate(candidate: Candidate, resume: Resume, extraction: Candida
         **(candidate.raw_profile or {}),
         "resume_id": str(resume.id),
         "extraction_source": extraction.source,
+        "identity_source": (candidate.raw_profile or {}).get("identity_source", "recruiter_upload_form"),
         "education": extraction.education,
         "experience": extraction.experience,
         "projects": extraction.projects,
@@ -226,9 +291,16 @@ async def _embed_resume(db, resume: Resume, candidate: Candidate, skills: list[s
     embedding_service = EmbeddingService()
     chunks = embedding_service.chunk_text(resume.extracted_text)
     vectors = embedding_service.embed(chunks)
-    await db.execute(delete(CandidateEmbedding).where(CandidateEmbedding.resume_id == resume.id))
+    await db.execute(
+        delete(CandidateEmbedding).where(
+            CandidateEmbedding.organization_id == resume.organization_id,
+            CandidateEmbedding.owner_id == resume.owner_id,
+            CandidateEmbedding.resume_id == resume.id,
+        )
+    )
     point_ids = embedding_service.upsert_candidate_resume(
         resume.organization_id,
+        resume.owner_id,
         candidate.id,
         resume.id,
         chunks,
@@ -245,6 +317,7 @@ async def _embed_resume(db, resume: Resume, candidate: Candidate, skills: list[s
         db.add(
             CandidateEmbedding(
                 organization_id=resume.organization_id,
+                owner_id=resume.owner_id,
                 candidate_id=candidate.id,
                 resume_id=resume.id,
                 qdrant_point_id=point_id,
@@ -260,11 +333,18 @@ async def _embed_resume(db, resume: Resume, candidate: Candidate, skills: list[s
 async def _extract_candidate_skills(db, resume: Resume, candidate: Candidate, extracted_skills: list[str] | None = None) -> list[str]:
     text = (resume.extracted_text or "").lower()
     skills = sorted({*(extracted_skills or []), *{skill for skill in SKILL_TERMS if skill in text}})
-    await db.execute(delete(CandidateSkill).where(CandidateSkill.candidate_id == candidate.id))
+    await db.execute(
+        delete(CandidateSkill).where(
+            CandidateSkill.organization_id == resume.organization_id,
+            CandidateSkill.owner_id == resume.owner_id,
+            CandidateSkill.candidate_id == candidate.id,
+        )
+    )
     for skill in skills:
         db.add(
             CandidateSkill(
                 organization_id=resume.organization_id,
+                owner_id=resume.owner_id,
                 candidate_id=candidate.id,
                 normalized_skill=skill,
                 raw_skill=skill,
@@ -278,6 +358,7 @@ async def _ensure_uploaded_stage(db, resume: Resume, candidate: Candidate) -> No
     existing = await db.scalar(
         select(CandidatePipelineStage).where(
             CandidatePipelineStage.organization_id == resume.organization_id,
+            CandidatePipelineStage.owner_id == resume.owner_id,
             CandidatePipelineStage.candidate_id == candidate.id,
             CandidatePipelineStage.job_description_id.is_(None),
             CandidatePipelineStage.deleted_at.is_(None),
@@ -287,6 +368,7 @@ async def _ensure_uploaded_stage(db, resume: Resume, candidate: Candidate) -> No
         db.add(
             CandidatePipelineStage(
                 organization_id=resume.organization_id,
+                owner_id=resume.owner_id,
                 candidate_id=candidate.id,
                 job_description_id=None,
                 stage=PipelineStage.uploaded,

@@ -18,7 +18,7 @@ class RAGPipeline:
     async def answer(self, auth: AuthContext, payload: CopilotRequest) -> AIResponse:
         safe_query = sanitize_recruiter_prompt(payload.query)
         plan = RetrievalRouter().plan(safe_query, payload.top_k)
-        retrieved = RetrievalRouter().retrieve(auth.organization_id, plan)
+        retrieved = RetrievalRouter().retrieve(auth.organization_id, auth.user_id, plan)
         reranked = RAGRerankingService().rerank(safe_query, retrieved)
         context = ContextCompressor().compress(reranked)
         result = await self.provider.complete(

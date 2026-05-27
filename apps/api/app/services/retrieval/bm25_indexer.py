@@ -46,7 +46,7 @@ class BM25Indexer:
         self.avg_doc_length: float = 0.0
         self.total_docs: int = 0
 
-    async def build_index(self, organization_id: UUID) -> None:
+    async def build_index(self, organization_id: UUID, owner_id: UUID) -> None:
         """Build BM25 index for organization.
 
         Args:
@@ -56,7 +56,14 @@ class BM25Indexer:
         query = (
             select(Candidate, Resume)
             .join(Resume, Candidate.id == Resume.candidate_id)
-            .where(Candidate.organization_id == organization_id)
+            .where(
+                Candidate.organization_id == organization_id,
+                Candidate.owner_id == owner_id,
+                Resume.organization_id == organization_id,
+                Resume.owner_id == owner_id,
+                Candidate.deleted_at.is_(None),
+                Resume.deleted_at.is_(None),
+            )
         )
         result = await self.db.execute(query)
         rows = result.all()
@@ -166,6 +173,7 @@ class BM25Indexer:
         self,
         query: str,
         organization_id: UUID,
+        owner_id: UUID,
         job_description_id: Optional[UUID] = None,
         limit: int = 10,
     ) -> list[Any]:
@@ -182,7 +190,7 @@ class BM25Indexer:
         """
         # Ensure index is built
         if not self.index:
-            await self.build_index(organization_id)
+            await self.build_index(organization_id, owner_id)
 
         # Tokenize query
         query_tokens = self._tokenize(query)

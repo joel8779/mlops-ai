@@ -19,9 +19,10 @@ class RetrievalRouter:
         rewritten = self._rewrite(normalized)
         return RetrievalPlan(rewritten_query=rewritten, strategy=strategy, top_k=top_k)
 
-    def retrieve(self, organization_id: UUID, plan: RetrievalPlan) -> list[SemanticSearchResult]:
+    def retrieve(self, organization_id: UUID, owner_id: UUID, plan: RetrievalPlan) -> list[SemanticSearchResult]:
         return SemanticSearchService().raw_chunk_search(
             organization_id,
+            owner_id,
             SemanticSearchRequest(query=plan.rewritten_query, limit=plan.top_k),
         )
 

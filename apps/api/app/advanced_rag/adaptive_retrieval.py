@@ -36,7 +36,7 @@ class AdaptiveRetrievalEngine:
         context = context or {}
         rewritten = self._rewrite(query, context)
         retriever = HybridRetriever(self.db)
-        results = await retriever.search(rewritten, organization_id, context.get("job_id"), limit=limit)
+        results = await retriever.search(rewritten, organization_id, recruiter_id, context.get("job_id"), limit=limit)
         profile = await self.preferences.build_profile(organization_id, recruiter_id)
         reranked = self._personalize(results, profile.skill_weights)
         confidence = self._confidence(reranked, rewritten)

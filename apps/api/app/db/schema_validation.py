@@ -7,12 +7,13 @@ from app.core.config import settings
 from app.db.session import engine
 
 
-EXPECTED_ALEMBIC_HEAD = "0005_pipeline_stage_contract"
+EXPECTED_ALEMBIC_HEAD = "0006_owner_isolation"
 
 CRITICAL_COLUMNS: dict[str, set[str]] = {
     "ats_scores": {
         "id",
         "organization_id",
+        "owner_id",
         "candidate_id",
         "job_description_id",
         "resume_id",
@@ -26,11 +27,11 @@ CRITICAL_COLUMNS: dict[str, set[str]] = {
         "updated_at",
         "deleted_at",
     },
-    "candidate_matches": {"candidate_id", "job_description_id", "overall_score", "semantic_score"},
-    "candidate_pipeline_stages": {"candidate_id", "job_description_id", "stage"},
-    "ranking_feedback": {"candidate_id", "job_description_id", "action"},
-    "candidate_embeddings": {"candidate_id", "resume_id", "qdrant_point_id"},
-    "resumes": {"id", "candidate_id"},
+    "candidate_matches": {"organization_id", "owner_id", "candidate_id", "job_description_id", "overall_score", "semantic_score"},
+    "candidate_pipeline_stages": {"organization_id", "owner_id", "candidate_id", "job_description_id", "stage"},
+    "ranking_feedback": {"organization_id", "owner_id", "candidate_id", "job_description_id", "action"},
+    "candidate_embeddings": {"organization_id", "owner_id", "candidate_id", "resume_id", "qdrant_point_id"},
+    "resumes": {"id", "organization_id", "owner_id", "candidate_id"},
 }
 
 CRITICAL_FOREIGN_KEYS: dict[str, set[str]] = {

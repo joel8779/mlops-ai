@@ -6,10 +6,12 @@ from app.services.matching_service import CandidateEvidence, MatchingService
 
 
 def test_matching_score_explainability():
+    owner_id = uuid4()
     job = JobDescription(
         id=uuid4(),
         organization_id=uuid4(),
-        created_by_user_id=uuid4(),
+        owner_id=owner_id,
+        created_by_user_id=owner_id,
         title="Backend Engineer",
         description="FastAPI PostgreSQL Docker",
         required_skills=["fastapi", "postgresql"],
@@ -17,11 +19,12 @@ def test_matching_score_explainability():
         education_requirements=[],
         keywords=["fastapi", "docker"],
     )
-    candidate = Candidate(id=uuid4(), organization_id=job.organization_id)
+    candidate = Candidate(id=uuid4(), organization_id=job.organization_id, owner_id=owner_id)
     resume = Resume(
         id=uuid4(),
         organization_id=job.organization_id,
-        uploaded_by_user_id=uuid4(),
+        owner_id=owner_id,
+        uploaded_by_user_id=owner_id,
         original_filename="resume.pdf",
         content_type="application/pdf",
         storage_key="x",

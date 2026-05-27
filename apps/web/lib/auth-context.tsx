@@ -32,11 +32,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const token = getAccessToken();
       if (token && mounted) {
         try {
-          await refreshUser();
+          // Validate token with backend before setting user state
+          const userData = await authApi.me();
+          if (mounted) {
+            setUser(userData);
+          }
         } catch (error) {
-          console.error("Failed to fetch user:", error);
+          console.error("Failed to validate token:", error);
+          // Token is invalid or expired - clear session
           clearTokens();
-          setUser(null);
+          if (mounted) {
+            setUser(null);
+          }
         }
       }
       if (mounted) {
@@ -77,8 +84,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
-    authApi.logout();
+    clearTokens();
     setUser(null);
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
   };
 
   return (

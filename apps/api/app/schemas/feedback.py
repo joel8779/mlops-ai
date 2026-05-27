@@ -20,5 +20,6 @@ class RankingFeedbackRead(BaseModel):
     action: FeedbackAction
     reward: float
     model_version: str | None
+    feature_snapshot: dict = Field(default_factory=dict)
 
     model_config = {"from_attributes": True}

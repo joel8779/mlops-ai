@@ -3,6 +3,9 @@ from io import BytesIO
 
 from app.core.config import settings
 from app.core.ocr_capabilities import check_binary
+from app.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class ResumeParseError(RuntimeError):
@@ -20,17 +23,32 @@ class ExtractionService:
     parser_version = "resume-extraction-0.3.0"
 
     def parse(self, payload: bytes, content_type: str) -> ParsedResume:
+        logger.info(
+            "extraction_parse_start",
+            content_type=content_type,
+            payload_size=len(payload),
+        )
         if not payload:
             raise ResumeParseError("Document payload is empty")
         if len(payload) > settings.max_upload_bytes:
             raise ResumeParseError("Document payload exceeds configured upload limit")
         if content_type == "application/pdf":
-            return self._parse_pdf(payload)
-        if content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-            return self._parse_docx(payload)
-        if content_type in {"image/png", "image/jpeg"}:
-            return self._parse_image(payload)
-        raise ResumeParseError(f"Unsupported content type: {content_type}")
+            result = self._parse_pdf(payload)
+        elif content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+            result = self._parse_docx(payload)
+        elif content_type in {"image/png", "image/jpeg"}:
+            result = self._parse_image(payload)
+        else:
+            raise ResumeParseError(f"Unsupported content type: {content_type}")
+        
+        logger.info(
+            "extraction_parse_complete",
+            content_type=content_type,
+            output_text_length=len(result.text),
+            parser_version=result.parser_version,
+            metadata_keys=list(result.metadata.keys()),
+        )
+        return result
 
     def _parse_pdf(self, payload: bytes) -> ParsedResume:
         text, page_count, method, metadata = self._extract_pdf_direct(payload)

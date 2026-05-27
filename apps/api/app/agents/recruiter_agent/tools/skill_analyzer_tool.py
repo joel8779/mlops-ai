@@ -15,7 +15,7 @@ from app.services.llm_provider import get_llm_provider
 class SkillAnalyzerTool(Tool):
     """Tool for analyzing candidate skills."""
 
-    def __init__(self, db: AsyncSession, organization_id: UUID) -> None:
+    def __init__(self, db: AsyncSession, organization_id: UUID, owner_id: UUID | None = None) -> None:
         """Initialize skill analyzer tool.
 
         Args:
@@ -24,6 +24,7 @@ class SkillAnalyzerTool(Tool):
         """
         self.db = db
         self.organization_id = organization_id
+        self.owner_id = owner_id
         self.candidates = CandidateRepository(db)
         self.prompt_manager = PromptManager()
 
@@ -41,14 +42,17 @@ class SkillAnalyzerTool(Tool):
 
         if not candidate_id:
             return "No candidate ID provided for skill analysis."
+        owner_id = self.owner_id or context.get("recruiter_id") or context.get("user_id")
+        if owner_id is None:
+            return "Skill analysis requires an authenticated recruiter context."
 
         # Get candidate and skills
-        candidate = await self.candidates.get_for_org(UUID(candidate_id), self.organization_id)
+        candidate = await self.candidates.get_for_owner(UUID(candidate_id), self.organization_id, UUID(str(owner_id)))
         if not candidate:
             return f"Candidate {candidate_id} not found."
 
-        skills = await self.candidates.skills_for_candidate(UUID(candidate_id))
-        resume = await self.candidates.latest_resume(UUID(candidate_id))
+        skills = await self.candidates.skills_for_candidate(UUID(candidate_id), self.organization_id, UUID(str(owner_id)))
+        resume = await self.candidates.latest_resume(UUID(candidate_id), self.organization_id, UUID(str(owner_id)))
 
         resume_text = resume.extracted_text[:2000] if resume else ""
 

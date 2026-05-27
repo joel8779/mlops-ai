@@ -13,7 +13,7 @@ from app.services.semantic_search_service import SemanticSearchService
 class CandidateSearchTool(Tool):
     """Tool for searching candidates."""
 
-    def __init__(self, db: AsyncSession, organization_id: UUID) -> None:
+    def __init__(self, db: AsyncSession, organization_id: UUID, owner_id: UUID | None = None) -> None:
         """Initialize candidate search tool.
 
         Args:
@@ -22,6 +22,7 @@ class CandidateSearchTool(Tool):
         """
         self.db = db
         self.organization_id = organization_id
+        self.owner_id = owner_id
         self.candidates = CandidateRepository(db)
         self.search_service = SemanticSearchService(db)
 
@@ -38,10 +39,14 @@ class CandidateSearchTool(Tool):
         query = parameters.get("query", "")
         job_id = parameters.get("job_id")
         limit = parameters.get("limit", 10)
+        owner_id = self.owner_id or context.get("recruiter_id") or context.get("user_id")
+        if owner_id is None:
+            return "Candidate search requires an authenticated recruiter context."
 
         # Perform semantic search
         results = await self.search_service.search_candidates(
             organization_id=self.organization_id,
+            owner_id=UUID(str(owner_id)),
             query=query,
             job_description_id=job_id,
             limit=limit,

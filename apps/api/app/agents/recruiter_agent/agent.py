@@ -77,7 +77,7 @@ class RecruiterAgent:
         self.model_router = model_router or ModelRouter()
         self.memory = AgentMemory(organization_id, user_id)
         self.planner = TaskPlanner()
-        self.tool_registry = ToolRegistry(db, organization_id)
+        self.tool_registry = ToolRegistry(db, organization_id, user_id)
         self.session_id = uuid4()
 
     async def process_query(

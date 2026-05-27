@@ -9,6 +9,18 @@ from app.repositories.base import BaseRepository
 class ResumeRepository(BaseRepository[Resume]):
     model = Resume
 
+    async def list_for_owner(self, organization_id: UUID, owner_id: UUID) -> list[Resume]:
+        result = await self.db.execute(
+            select(Resume)
+            .where(
+                Resume.organization_id == organization_id,
+                Resume.owner_id == owner_id,
+                Resume.deleted_at.is_(None),
+            )
+            .order_by(Resume.created_at.desc())
+        )
+        return list(result.scalars().all())
+
     async def list_for_org(self, organization_id: UUID) -> list[Resume]:
         result = await self.db.execute(
             select(Resume)
@@ -19,6 +31,17 @@ class ResumeRepository(BaseRepository[Resume]):
             .order_by(Resume.created_at.desc())
         )
         return list(result.scalars().all())
+
+    async def get_for_owner(self, resume_id: UUID, organization_id: UUID, owner_id: UUID) -> Resume | None:
+        result = await self.db.execute(
+            select(Resume).where(
+                Resume.id == resume_id,
+                Resume.organization_id == organization_id,
+                Resume.owner_id == owner_id,
+                Resume.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def get_for_org(self, resume_id: UUID, organization_id: UUID) -> Resume | None:
         result = await self.db.execute(

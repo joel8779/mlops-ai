@@ -43,6 +43,7 @@ class JobIntelligenceService:
         semantic_requirements = self.semantic_requirements(payload.description, parsed)
         job = JobDescription(
             organization_id=auth.organization_id,
+            owner_id=auth.user_id,
             created_by_user_id=auth.user_id,
             title=payload.title,
             description=payload.description,
@@ -157,10 +158,15 @@ class JobIntelligenceService:
         chunks = embedding_service.chunk_text(job.description)
         vectors = embedding_service.embed(chunks)
         await self.db.execute(
-            delete(JobDescriptionEmbedding).where(JobDescriptionEmbedding.job_description_id == job.id)
+            delete(JobDescriptionEmbedding).where(
+                JobDescriptionEmbedding.organization_id == job.organization_id,
+                JobDescriptionEmbedding.owner_id == job.owner_id,
+                JobDescriptionEmbedding.job_description_id == job.id,
+            )
         )
         point_ids = embedding_service.upsert_job_description(
             job.organization_id,
+            job.owner_id,
             job.id,
             chunks,
             vectors,
@@ -169,6 +175,7 @@ class JobIntelligenceService:
             self.db.add(
                 JobDescriptionEmbedding(
                     organization_id=job.organization_id,
+                    owner_id=job.owner_id,
                     job_description_id=job.id,
                     qdrant_point_id=point_id,
                     model_name=settings.embedding_model_name,

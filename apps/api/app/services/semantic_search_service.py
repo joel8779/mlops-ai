@@ -36,13 +36,14 @@ class SemanticSearchService:
     def __init__(self, db: AsyncSession | None = None) -> None:
         self.db = db
 
-    async def search(self, organization_id: UUID, payload: SemanticSearchRequest) -> list[CandidateSearchResult]:
+    async def search(self, organization_id: UUID, owner_id: UUID, payload: SemanticSearchRequest) -> list[CandidateSearchResult]:
         if self.db is None:
             raise RuntimeError("Candidate-level semantic search requires a database session")
-        await self._ensure_job_context(organization_id, payload.job_description_id)
+        await self._ensure_job_context(organization_id, owner_id, payload.job_description_id)
         try:
             hits = EmbeddingService().candidate_search(
                 organization_id=organization_id,
+                owner_id=owner_id,
                 query=payload.query,
                 limit=min(payload.limit * 5 + payload.offset, 100),
                 skills=payload.skills,
@@ -52,19 +53,19 @@ class SemanticSearchService:
         aggregated = self._aggregate_hits(hits, payload)
         repository = CandidateRepository(self.db)
         if not aggregated:
-            aggregated = await self._database_fallback(repository, organization_id, payload)
+            aggregated = await self._database_fallback(repository, organization_id, owner_id, payload)
         candidate_ids = list(aggregated.keys())[payload.offset : payload.offset + payload.limit]
         results: list[CandidateSearchResult] = []
         for candidate_id in candidate_ids:
-            candidate = await repository.get_for_org(candidate_id, organization_id)
+            candidate = await repository.get_for_owner(candidate_id, organization_id, owner_id)
             if candidate is None:
                 continue
             if payload.location and payload.location.lower() not in str(candidate.location or "").lower():
                 continue
-            resume = await repository.latest_resume(candidate.id)
-            skills = await repository.skills_for_candidate(candidate.id)
-            match = await self._job_match(candidate.id, payload.job_description_id)
-            ats_score = await self._ats_score(candidate.id, payload.job_description_id)
+            resume = await repository.latest_resume(candidate.id, organization_id, owner_id)
+            skills = await repository.skills_for_candidate(candidate.id, organization_id, owner_id)
+            match = await self._job_match(organization_id, owner_id, candidate.id, payload.job_description_id)
+            ats_score = await self._ats_score(organization_id, owner_id, candidate.id, payload.job_description_id)
             matched_skills = match.matched_skills if match else self._matched_query_skills(payload.query, skills)
             missing_skills = match.missing_skills if match else []
             semantic_score = max(aggregated[candidate_id]["score"], float(match.semantic_score) if match else 0)
@@ -90,33 +91,35 @@ class SemanticSearchService:
             reverse=True,
         )
 
-    async def _ensure_job_context(self, organization_id: UUID, job_id: UUID | None) -> None:
+    async def _ensure_job_context(self, organization_id: UUID, owner_id: UUID, job_id: UUID | None) -> None:
         if job_id is None or self.db is None:
             return
         existing = await self.db.scalar(
             select(CandidateMatch.id).where(
                 CandidateMatch.organization_id == organization_id,
+                CandidateMatch.owner_id == owner_id,
                 CandidateMatch.job_description_id == job_id,
             ).limit(1)
         )
         if existing is not None:
             return
-        job = await JobDescriptionRepository(self.db).get_for_org(job_id, organization_id)
+        job = await JobDescriptionRepository(self.db).get_for_owner(job_id, organization_id, owner_id)
         if job is not None:
-            await MatchingService(self.db).rank_candidates(organization_id, job, limit=100)
+            await MatchingService(self.db).rank_candidates(organization_id, owner_id, job, limit=100)
 
     async def _database_fallback(
         self,
         repository: CandidateRepository,
         organization_id: UUID,
+        owner_id: UUID,
         payload: SemanticSearchRequest,
     ) -> dict[UUID, dict[str, Any]]:
-        candidates = await repository.list_for_org(organization_id, limit=min(payload.limit * 5 + payload.offset, 100))
+        candidates = await repository.list_for_owner(organization_id, owner_id, limit=min(payload.limit * 5 + payload.offset, 100))
         terms = {term.lower() for term in payload.query.split() if len(term) > 2}
         fallback: dict[UUID, dict[str, Any]] = {}
         for candidate in candidates:
-            resume = await repository.latest_resume(candidate.id)
-            skills = await repository.skills_for_candidate(candidate.id)
+            resume = await repository.latest_resume(candidate.id, organization_id, owner_id)
+            skills = await repository.skills_for_candidate(candidate.id, organization_id, owner_id)
             text = " ".join(
                 [
                     candidate.full_name or "",
@@ -127,7 +130,7 @@ class SemanticSearchService:
                 ]
             ).lower()
             score = sum(1 for term in terms if term in text) * 12.5
-            match = await self._job_match(candidate.id, payload.job_description_id)
+            match = await self._job_match(organization_id, owner_id, candidate.id, payload.job_description_id)
             if match:
                 score = max(score, float(match.semantic_score), float(match.overall_score) * 0.6)
             if payload.skills and not set(payload.skills) & set(skills):
@@ -140,9 +143,10 @@ class SemanticSearchService:
                 }
         return dict(sorted(fallback.items(), key=lambda item: item[1]["score"], reverse=True))
 
-    def raw_chunk_search(self, organization_id: UUID, payload: SemanticSearchRequest) -> list[SemanticSearchResult]:
+    def raw_chunk_search(self, organization_id: UUID, owner_id: UUID, payload: SemanticSearchRequest) -> list[SemanticSearchResult]:
         hits = EmbeddingService().candidate_search(
             organization_id=organization_id,
+            owner_id=owner_id,
             query=payload.query,
             limit=payload.limit + payload.offset,
             skills=payload.skills,
@@ -163,6 +167,7 @@ class SemanticSearchService:
     async def search_candidates(
         self,
         organization_id: UUID,
+        owner_id: UUID,
         query: str,
         job_description_id: UUID | None = None,
         limit: int = 10,
@@ -174,7 +179,7 @@ class SemanticSearchService:
                 score=result.semantic_score / 100,
                 metadata=result.model_dump(),
             )
-            for result in await self.search(organization_id, payload)
+            for result in await self.search(organization_id, owner_id, payload)
         ]
 
     @staticmethod
@@ -196,22 +201,32 @@ class SemanticSearchService:
                 current["snippets"].append(snippet[:220])
         return dict(sorted(aggregated.items(), key=lambda item: item[1]["score"], reverse=True))
 
-    async def _job_match(self, candidate_id: UUID, job_id: UUID | None) -> CandidateMatch | None:
+    async def _job_match(self, organization_id: UUID, owner_id: UUID, candidate_id: UUID, job_id: UUID | None) -> CandidateMatch | None:
         if job_id is None or self.db is None:
             return None
         return await self.db.scalar(
             select(CandidateMatch)
-            .where(CandidateMatch.candidate_id == candidate_id, CandidateMatch.job_description_id == job_id)
+            .where(
+                CandidateMatch.organization_id == organization_id,
+                CandidateMatch.owner_id == owner_id,
+                CandidateMatch.candidate_id == candidate_id,
+                CandidateMatch.job_description_id == job_id,
+            )
             .order_by(desc(CandidateMatch.updated_at))
             .limit(1)
         )
 
-    async def _ats_score(self, candidate_id: UUID, job_id: UUID | None):
+    async def _ats_score(self, organization_id: UUID, owner_id: UUID, candidate_id: UUID, job_id: UUID | None):
         if job_id is None or self.db is None:
             return None
         return await self.db.scalar(
             select(ATSScore.ats_score)
-            .where(ATSScore.candidate_id == candidate_id, ATSScore.job_description_id == job_id)
+            .where(
+                ATSScore.organization_id == organization_id,
+                ATSScore.owner_id == owner_id,
+                ATSScore.candidate_id == candidate_id,
+                ATSScore.job_description_id == job_id,
+            )
             .order_by(desc(ATSScore.updated_at))
             .limit(1)
         )

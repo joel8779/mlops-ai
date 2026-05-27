@@ -2,11 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowUpRight, Bookmark, Loader2, RefreshCcw, Trash2, UploadCloud, User } from "lucide-react";
 import AppShell from "@/components/app-shell";
 import { candidatesApi, feedbackApi, jobsApi } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
 export default function CandidatesPage() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [candidates, setCandidates] = useState<any[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
   const [selectedJobId, setSelectedJobId] = useState("");
@@ -16,7 +20,15 @@ export default function CandidatesPage() {
   const [deleteStep, setDeleteStep] = useState("");
   const [error, setError] = useState("");
 
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace("/login");
+    }
+  }, [user, authLoading, router]);
+
   const loadCandidates = async () => {
+    if (!user) return;
     setLoading(true);
     setError("");
     try {
@@ -34,12 +46,16 @@ export default function CandidatesPage() {
   };
 
   useEffect(() => {
-    loadCandidates();
-  }, [selectedJobId]);
+    if (user) {
+      loadCandidates();
+    }
+  }, [selectedJobId, user]);
 
   useEffect(() => {
-    jobsApi.list().then((items: any) => setJobs(items as any[])).catch(() => setJobs([]));
-  }, []);
+    if (user) {
+      jobsApi.list().then((items: any) => setJobs(items as any[])).catch(() => setJobs([]));
+    }
+  }, [user]);
 
   const saveFeedback = async (candidateId: string, action: string) => {
     if (!selectedJobId) {

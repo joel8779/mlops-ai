@@ -126,15 +126,18 @@ class ATSScoringService:
             issues.append(f"Missing job skill: {missing_skill}")
             recommendations.append(f"Validate or develop evidence for {missing_skill}")
         explanation = self._explain(score, components, issues, job)
-        await self._persist_match(job.organization_id, job.id, match)
+        await self._persist_match(job.organization_id, job.owner_id, job.id, match)
         await self.db.execute(
             delete(ATSScore).where(
+                ATSScore.organization_id == resume.organization_id,
+                ATSScore.owner_id == resume.owner_id,
                 ATSScore.candidate_id == candidate.id,
                 ATSScore.job_description_id == job.id,
             )
         )
         record = ATSScore(
             organization_id=resume.organization_id,
+            owner_id=resume.owner_id,
             candidate_id=candidate.id,
             job_description_id=job.id,
             resume_id=resume.id,
@@ -171,9 +174,11 @@ class ATSScoringService:
         issue_text = f" Primary issue: {issues[0]}." if issues else ""
         return f"{verdict} Strongest signal: {strongest.name}. Weakest signal: {weakest.name}.{issue_text}"
 
-    async def _persist_match(self, organization_id: UUID, job_id: UUID, match: CandidateMatchRead) -> None:
+    async def _persist_match(self, organization_id: UUID, owner_id: UUID, job_id: UUID, match: CandidateMatchRead) -> None:
         await self.db.execute(
             delete(CandidateMatch).where(
+                CandidateMatch.organization_id == organization_id,
+                CandidateMatch.owner_id == owner_id,
                 CandidateMatch.candidate_id == match.candidate_id,
                 CandidateMatch.job_description_id == job_id,
             )
@@ -181,6 +186,7 @@ class ATSScoringService:
         self.db.add(
             CandidateMatch(
                 organization_id=organization_id,
+                owner_id=owner_id,
                 candidate_id=match.candidate_id,
                 job_description_id=job_id,
                 overall_score=match.overall_score,
