@@ -10,10 +10,35 @@ An enterprise-grade, multi-tenant Applicant Tracking System (ATS) and Resume Int
 
 ---
 
-## 📸 Dashboard Preview
+## 📸 Platform Previews
 
-![Platform Dashboard](docs/screenshots/01_homepage.png)
-*Executive dashboard visualizing recruitment funnel progress, skill distributions, and recent applicant activity.*
+### 🌐 Landing Page
+![Landing Hero](docs/screenshots/01_landing_hero.jpeg)
+*Modern dark-mode product landing page.*
+
+### 🛠️ Interactive Features & Product Preview
+| Core Features | Interactive Dashboard |
+| --- | --- |
+| ![Landing Features](docs/screenshots/02_landing_features.jpeg) | ![Product Preview](docs/screenshots/03_landing_product.jpeg) |
+
+### 🔐 User Onboarding & Authentication
+| Signup Page | Login Page |
+| --- | --- |
+| ![Signup Page](docs/screenshots/06_signup.jpeg) | ![Login Page](docs/screenshots/05_login.jpeg) |
+
+### 💼 Recruiter Workspace & Chat
+| Main Dashboard | Knowledge Base & Document Library |
+| --- | --- |
+| ![Main Dashboard](docs/screenshots/07_dashboard.jpeg) | ![Documents Library](docs/screenshots/09_documents_library.jpeg) |
+
+| New Chat / Blank Slate | Active QA Chat Session |
+| --- | --- |
+| ![New Chat](docs/screenshots/08_new_chat.jpeg) | ![Active Chat Session](docs/screenshots/10_active_chat.jpeg) |
+
+### ⚙️ User Settings & Appearance
+| Profile Settings | Theme & Danger Zone |
+| --- | --- |
+| ![Settings Profile](docs/screenshots/11_settings_profile.jpeg) | ![Settings Theme](docs/screenshots/12_settings_theme.jpeg) |
 
 ---
 
