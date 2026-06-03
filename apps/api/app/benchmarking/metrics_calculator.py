@@ -46,10 +46,10 @@ class MetricsCalculator:
         Returns:
             ClassificationMetrics object
         """
-        true_positives = sum(1 for p, l in zip(predictions, labels) if p == 1 and l == 1)
-        false_positives = sum(1 for p, l in zip(predictions, labels) if p == 1 and l == 0)
-        true_negatives = sum(1 for p, l in zip(predictions, labels) if p == 0 and l == 0)
-        false_negatives = sum(1 for p, l in zip(predictions, labels) if p == 0 and l == 1)
+        true_positives = sum(1 for p, y in zip(predictions, labels) if p == 1 and y == 1)
+        false_positives = sum(1 for p, y in zip(predictions, labels) if p == 1 and y == 0)
+        true_negatives = sum(1 for p, y in zip(predictions, labels) if p == 0 and y == 0)
+        false_negatives = sum(1 for p, y in zip(predictions, labels) if p == 0 and y == 1)
 
         accuracy = (true_positives + true_negatives) / len(labels) if labels else 0
         precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
@@ -96,7 +96,7 @@ class MetricsCalculator:
             for i, item in enumerate(ideal_ranked[:k]):
                 idcg += 1 / np.log2(i + 2)
             ndcg = dcg / idcg if idcg > 0 else 0
-            ndcg_scores.append(ndg)
+            ndcg_scores.append(ndcg)
 
         avg_ndcg = np.mean(ndcg_scores) if ndcg_scores else 0
 

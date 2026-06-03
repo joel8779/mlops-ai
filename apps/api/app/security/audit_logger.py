@@ -2,10 +2,10 @@
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from enum import Enum
 from typing import Any, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -159,6 +159,7 @@ class AuditLogger:
         user_id: Optional[UUID] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
+        severity: Optional[AuditSeverity] = None,
         limit: int = 100,
     ) -> list[AuditEvent]:
         """Query audit events.

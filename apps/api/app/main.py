@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
@@ -37,7 +37,6 @@ import app.observability.metrics  # Ensure all prometheus metrics are registered
 configure_logging()
 logger = get_logger(__name__)
 
-from fastapi import Request
 def custom_key_func(request: Request) -> str | None:
     if request.url.path in {"/ready", "/live", "/metrics", "/health", "/smtp-health"}:
         return None
