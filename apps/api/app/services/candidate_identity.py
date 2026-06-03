@@ -77,7 +77,7 @@ class CandidateIdentityExtractor:
             if candidate:
                 return CandidateIdentity(candidate, email, phone, "top_document_lines")
 
-        return CandidateIdentity("Candidate Profile", email, phone, "fallback")
+        return CandidateIdentity("Uploaded Candidate", email, phone, "fallback")
 
     @staticmethod
     def _email(text: str) -> str | None:

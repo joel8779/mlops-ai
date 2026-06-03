@@ -78,7 +78,14 @@ async def ingest_resume(
             task_name="resume.parse",
         )
     except Exception as exc:
-        logger.error("resume_enqueue_failed", resume_id=str(resume.id), error=str(exc))
+        logger.exception(
+            "resume_enqueue_failed",
+            resume_id=str(resume.id),
+            candidate_id=str(candidate.id),
+            organization_id=str(auth.organization_id),
+            owner_id=str(auth.user_id),
+            error=str(exc),
+        )
         resume.status = ResumeStatus.failed
         resume.parse_error = "Resume processing queue is unavailable"
         resume.metadata_json = {**(resume.metadata_json or {}), "enqueue_error": str(exc)}

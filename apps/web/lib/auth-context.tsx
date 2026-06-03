@@ -8,7 +8,7 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
@@ -17,6 +17,7 @@ interface RegisterData {
   password: string;
   full_name: string;
   organization_name: string;
+  organization_pin: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -78,16 +79,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const register = async (data: RegisterData) => {
-    const response = await authApi.register(data);
-    setTokens(response.access_token, response.refresh_token);
-    await refreshUser();
+    await authApi.register(data);
+    setUser(null);
   };
 
-  const logout = () => {
-    clearTokens();
+  const logout = async () => {
     setUser(null);
-    if (typeof window !== "undefined") {
-      window.location.href = "/login";
+    clearTokens();
+    try {
+      await authApi.logout();
+    } finally {
+      setUser(null);
     }
   };
 

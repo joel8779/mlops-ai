@@ -31,10 +31,18 @@ from app.middleware.security import SecurityHeadersMiddleware
 from app.middleware.tenant import TenantContextMiddleware
 from app.observability.tracing import configure_tracing, shutdown_tracing
 from app.schemas.health import HealthResponse
+from app.services.email_service import EmailService
 
 configure_logging()
 logger = get_logger(__name__)
-limiter = Limiter(key_func=get_remote_address, default_limits=[settings.rate_limit_default])
+
+from fastapi import Request
+def custom_key_func(request: Request) -> str | None:
+    if request.url.path in {"/ready", "/live", "/metrics", "/health", "/smtp-health"}:
+        return None
+    return get_remote_address(request)
+
+limiter = Limiter(key_func=custom_key_func, default_limits=[settings.rate_limit_default])
 
 
 @asynccontextmanager
@@ -56,6 +64,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("runtime_schema_validated")
     else:
         logger.warning("runtime_schema_drift_detected", schema=schema_report.model_dump())
+    email_service = EmailService()
+    email_service.validate_configuration()
     try:
         yield
     except (asyncio.CancelledError, KeyboardInterrupt):
@@ -140,6 +150,13 @@ def create_app() -> FastAPI:
         """Liveness check endpoint - Kubernetes live probe."""
         return HealthResponse(status="alive", service=settings.app_name, version=settings.app_version)
 
+    @app.get("/smtp-health", tags=["system"])
+    async def smtp_health() -> JSONResponse:
+        email_service = EmailService()
+        report = await email_service.verify_connection_async()
+        status_code = 200 if report["status"] in {"healthy", "configured", "disabled"} else 503
+        return JSONResponse(status_code=status_code, content=report)
+
     app.include_router(api_router, prefix="/api/v1")
     if Instrumentator is not None:
         Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
@@ -182,16 +199,28 @@ async def _readiness_payload() -> dict:
     try:
         schema_report = await get_runtime_schema_report()
         dependencies["schema"] = schema_report.model_dump()
-        if schema_report.status == "drift_detected":
+        if schema_report.status in {"drift_detected", "validation_error"}:
             status = "not_ready"
+            logger.warning(
+                "readiness_schema_check_failed",
+                status=schema_report.status,
+                current_revision=schema_report.current_revision,
+                expected_revision=schema_report.expected_revision,
+                drift=[item.message() for item in schema_report.drift],
+                error=schema_report.error,
+            )
     except Exception as exc:
         status = "not_ready"
         dependencies["schema"] = {"status": "unhealthy", "error": str(exc)}
+        logger.exception("readiness_schema_check_error", error=str(exc))
 
     dependencies["gemini"] = {
         "status": "configured" if settings.llm_provider == "disabled" or settings.gemini_api_key else "degraded",
         "provider": settings.llm_provider,
     }
+
+    smtp_report = EmailService().health_report()
+    dependencies["smtp"] = smtp_report
 
     return {
         "status": status,

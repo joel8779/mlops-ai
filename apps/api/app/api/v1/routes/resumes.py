@@ -23,7 +23,7 @@ async def list_resumes(
     auth: AuthContext = Depends(get_current_auth),
     db: AsyncSession = Depends(get_db),
 ) -> list[Resume]:
-    return await ResumeRepository(db).list_for_owner(auth.organization_id, auth.user_id)
+    return await ResumeRepository(db).list_for_org(auth.organization_id)
 
 
 @router.post("/upload", response_model=ResumeUploadResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -38,6 +38,9 @@ async def upload_resume(
     db: AsyncSession = Depends(get_db),
     storage: ObjectStorage = Depends(get_object_storage),
 ) -> Resume:
+    from app.core.rate_limit import rate_limiter
+    await rate_limiter.check_rate_limit(f"rate:upload:{auth.user_id}", 20, 3600)
+
     return await ingest_resume(
         db=db,
         auth=auth,
@@ -57,7 +60,7 @@ async def get_resume(
     auth: AuthContext = Depends(get_current_auth),
     db: AsyncSession = Depends(get_db),
 ) -> Resume:
-    resume = await ResumeRepository(db).get_for_owner(resume_id, auth.organization_id, auth.user_id)
+    resume = await ResumeRepository(db).get_for_org(resume_id, auth.organization_id)
     if resume is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume not found")
     return resume
@@ -69,14 +72,13 @@ async def get_resume_diagnostics(
     auth: AuthContext = Depends(get_current_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    resume = await ResumeRepository(db).get_for_owner(resume_id, auth.organization_id, auth.user_id)
+    resume = await ResumeRepository(db).get_for_org(resume_id, auth.organization_id)
     if resume is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume not found")
     event_rows = await db.execute(
         select(ResumeProcessingEvent)
         .where(
             ResumeProcessingEvent.organization_id == auth.organization_id,
-            ResumeProcessingEvent.owner_id == auth.user_id,
             ResumeProcessingEvent.resume_id == resume.id,
         )
         .order_by(desc(ResumeProcessingEvent.created_at))
@@ -115,7 +117,7 @@ async def delete_resume(
     db: AsyncSession = Depends(get_db),
     storage: ObjectStorage = Depends(get_object_storage),
 ) -> None:
-    resume = await ResumeRepository(db).get_for_owner(resume_id, auth.organization_id, auth.user_id)
+    resume = await ResumeRepository(db).get_for_org(resume_id, auth.organization_id)
     if resume is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume not found")
     await DeleteWorkflowService(db, storage).delete_resume(resume)

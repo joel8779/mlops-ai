@@ -8,8 +8,10 @@ from datetime import datetime
 from app.core.config import settings
 from app.db.schema_validation import get_runtime_schema_report
 from app.db.session import async_engine
+from app.logging import get_logger
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 @router.get("/health")
@@ -68,11 +70,20 @@ async def readiness_check(response: Response):
     try:
         schema_report = await get_runtime_schema_report()
         health_status["dependencies"]["schema"] = schema_report.model_dump()
-        if schema_report.status == "drift_detected":
+        if schema_report.status in {"drift_detected", "validation_error"}:
             health_status["status"] = "not_ready"
+            logger.warning(
+                "readiness_schema_check_failed",
+                status=schema_report.status,
+                current_revision=schema_report.current_revision,
+                expected_revision=schema_report.expected_revision,
+                drift=[item.message() for item in schema_report.drift],
+                error=schema_report.error,
+            )
     except Exception as e:
         health_status["status"] = "not_ready"
-        health_status["dependencies"]["schema"] = f"unhealthy: {str(e)}"
+        health_status["dependencies"]["schema"] = {"status": "unhealthy", "error": str(e)}
+        logger.exception("readiness_schema_check_error", error=str(e))
 
     if health_status["status"] != "ready":
         response.status_code = 503

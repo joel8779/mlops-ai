@@ -16,4 +16,7 @@ async def search_candidates(
     auth: AuthContext = Depends(get_current_auth),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.core.rate_limit import rate_limiter
+    await rate_limiter.check_rate_limit(f"rate:search:{auth.user_id}", 120, 3600)
+
     return await SemanticSearchService(db).search(auth.organization_id, auth.user_id, payload)

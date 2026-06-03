@@ -4,10 +4,14 @@ from uuid import UUID
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.redis import get_redis_client
 from app.core.security import UserRole, decode_token
 from app.db.session import get_db
+from app.logging import get_logger
 from app.models.domain import User
 from app.schemas.auth import AuthContext
+
+logger = get_logger(__name__)
 
 
 async def get_current_auth(
@@ -30,11 +34,14 @@ async def get_current_auth(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive user")
     if user.organization_id != organization_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Organization mismatch")
+    if await token_was_invalidated(user.id, int(payload.get("iat", 0))):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been invalidated")
 
     return AuthContext(
         user_id=user.id,
         organization_id=user.organization_id,
         email=user.email,
+        full_name=user.full_name,
         roles=user.roles,
     )
 
@@ -46,3 +53,12 @@ def require_roles(*allowed_roles: UserRole) -> Callable[[AuthContext], AuthConte
         return auth
 
     return dependency
+
+
+async def token_was_invalidated(user_id: UUID, issued_at: int) -> bool:
+    try:
+        invalid_before = await get_redis_client().get(f"auth:invalid_before:{user_id}")
+    except Exception as exc:
+        logger.warning("auth_invalidation_check_failed", user_id=str(user_id), error=str(exc))
+        return False
+    return bool(invalid_before and issued_at <= int(invalid_before))

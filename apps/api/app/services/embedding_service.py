@@ -260,7 +260,6 @@ class EmbeddingService:
             query_vector=vector,
             query_filter=Filter(
                 must=[FieldCondition(key="organization_id", match=MatchValue(value=str(organization_id)))]
-                + [FieldCondition(key="owner_id", match=MatchValue(value=str(owner_id)))]
             ),
             limit=limit,
         )
@@ -281,7 +280,6 @@ class EmbeddingService:
         )
         conditions = [
             FieldCondition(key="organization_id", match=MatchValue(value=str(organization_id))),
-            FieldCondition(key="owner_id", match=MatchValue(value=str(owner_id))),
         ]
         if skills:
             conditions.append(FieldCondition(key="skills", match=MatchAny(any=skills)))

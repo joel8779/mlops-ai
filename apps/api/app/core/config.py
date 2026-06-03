@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AnyHttpUrl, Field, field_validator
+from pydantic import AliasChoices, AnyHttpUrl, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -49,8 +49,8 @@ class Settings(BaseSettings):
 
     jwt_secret_key: str = "change-me"
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
-    refresh_token_expire_days: int = 14
+    access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 7
     auth_dev_bypass: bool = False
     api_key_pepper: str = "change-me"
     encryption_key: str = "change-me"
@@ -124,6 +124,20 @@ class Settings(BaseSettings):
     ranking_drift_threshold: float = 0.15
     recommendation_quality_threshold: float = 0.72
 
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_use_tls: bool = True
+    smtp_timeout_seconds: int = 10
+    smtp_retry_attempts: int = 3
+    smtp_retry_backoff_seconds: int = 5
+    otp_expiry_minutes: int = Field(default=10, validation_alias=AliasChoices("OTP_EXPIRY_MINUTES"))
+    otp_rate_limit_seconds: int = Field(default=60, validation_alias=AliasChoices("OTP_RATE_LIMIT_SECONDS"))
+    otp_ratelimit_window_seconds: int = 3600
+    otp_ratelimit_max_requests: int = 5
+
     feature_copilot_2: bool = True
     feature_recommendations: bool = True
     feature_knowledge_graph: bool = True
@@ -183,9 +197,35 @@ class Settings(BaseSettings):
             return False
         return bool(value)
 
+    @field_validator("smtp_port")
+    @classmethod
+    def validate_smtp_port(cls, value: int) -> int:
+        if not 1 <= value <= 65535:
+            raise ValueError("SMTP port must be between 1 and 65535")
+        return value
+
+    @field_validator(
+        "smtp_timeout_seconds",
+        "smtp_retry_attempts",
+        "smtp_retry_backoff_seconds",
+        "otp_expiry_minutes",
+        "otp_rate_limit_seconds",
+        "otp_ratelimit_window_seconds",
+        "otp_ratelimit_max_requests",
+    )
+    @classmethod
+    def validate_positive_ints(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("Timing and limit values must be positive integers")
+        return value
+
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @property
+    def otp_ttl_seconds(self) -> int:
+        return self.otp_expiry_minutes * 60
 
 
 @lru_cache

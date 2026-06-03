@@ -30,7 +30,17 @@ class LLMRecruiterService:
         
         options = GenerationOptions(temperature=0.2)
         result = await self.provider.complete(user_prompt, system_prompt, options)
-        
+
+        # Persist summary only when the LLM returns non-empty content.
+        candidate = await self.candidates.get_for_org(candidate_id, auth.organization_id)
+        if candidate:
+            if result.text and result.text.strip():
+                candidate.summary = result.text
+                await self.db.commit()
+            else:
+                # Preserve existing stored summary when LLM output is empty.
+                result = result.__class__(**{**result.__dict__, "text": candidate.summary or ""})
+
         await self._log_usage(auth, "candidate_summary", result)
         return AIResponse(answer=result.text, usage=result.__dict__)
 
@@ -81,11 +91,11 @@ class LLMRecruiterService:
         return AIResponse(answer=result.text, usage=result.__dict__)
 
     async def _candidate_context(self, candidate_id: UUID, organization_id: UUID, owner_id: UUID) -> str:
-        candidate = await self.candidates.get_for_owner(candidate_id, organization_id, owner_id)
+        candidate = await self.candidates.get_for_org(candidate_id, organization_id)
         if candidate is None:
             return f"Candidate {candidate_id} not found."
-        resume = await self.candidates.latest_resume(candidate.id, organization_id, owner_id)
-        skills = await self.candidates.skills_for_candidate(candidate.id, organization_id, owner_id)
+        resume = await self.candidates.latest_resume(candidate.id, organization_id)
+        skills = await self.candidates.skills_for_candidate(candidate.id, organization_id)
         
         # Try to get resume text from extracted_text, fallback to raw_profile
         resume_text = ""
@@ -118,7 +128,7 @@ class LLMRecruiterService:
     async def _job_context(self, job_id: UUID | None, organization_id: UUID, owner_id: UUID) -> str:
         if job_id is None:
             return "No job description provided."
-        job = await self.jobs.get_for_owner(job_id, organization_id, owner_id)
+        job = await self.jobs.get_for_org(job_id, organization_id)
         if job is None:
             return f"Job {job_id} not found."
         return (

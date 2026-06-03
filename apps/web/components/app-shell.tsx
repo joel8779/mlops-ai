@@ -49,8 +49,7 @@ export default function AppShell({ children }: AppShellProps) {
   }, [loading, router, user]);
 
   const handleLogout = () => {
-    logout();
-    router.replace("/");
+    void logout().finally(() => router.replace("/login"));
   };
 
   if (loading || (!user && !getAccessToken())) {

@@ -24,23 +24,25 @@ async def score_candidate_for_job(
     auth: AuthContext = Depends(get_current_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    job = await JobDescriptionRepository(db).get_for_owner(job_id, auth.organization_id, auth.user_id)
+    from app.core.rate_limit import rate_limiter
+    await rate_limiter.check_rate_limit(f"rate:ats_score:{auth.user_id}", 60, 3600)
+
+    job = await JobDescriptionRepository(db).get_for_org(job_id, auth.organization_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job description not found")
     candidate_repository = CandidateRepository(db)
-    candidate = await candidate_repository.get_for_owner(candidate_id, auth.organization_id, auth.user_id)
+    candidate = await candidate_repository.get_for_org(candidate_id, auth.organization_id)
     if candidate is None:
         raise HTTPException(status_code=404, detail="Candidate not found")
-    resume = await candidate_repository.latest_resume(candidate.id, auth.organization_id, auth.user_id)
+    resume = await candidate_repository.latest_resume(candidate.id, auth.organization_id)
     if resume is None:
         raise HTTPException(status_code=404, detail="Resume not found")
-    skills = await candidate_repository.skills_for_candidate(candidate.id, auth.organization_id, auth.user_id)
+    skills = await candidate_repository.skills_for_candidate(candidate.id, auth.organization_id)
     existing_match = await db.scalar(
         select(CandidateMatch).where(
             CandidateMatch.candidate_id == candidate.id,
             CandidateMatch.job_description_id == job.id,
             CandidateMatch.organization_id == auth.organization_id,
-            CandidateMatch.owner_id == auth.user_id,
         )
     )
     semantic_score = float(existing_match.semantic_score) if existing_match else 0.0

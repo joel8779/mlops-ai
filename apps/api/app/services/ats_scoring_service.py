@@ -130,7 +130,6 @@ class ATSScoringService:
         await self.db.execute(
             delete(ATSScore).where(
                 ATSScore.organization_id == resume.organization_id,
-                ATSScore.owner_id == resume.owner_id,
                 ATSScore.candidate_id == candidate.id,
                 ATSScore.job_description_id == job.id,
             )
@@ -178,7 +177,6 @@ class ATSScoringService:
         await self.db.execute(
             delete(CandidateMatch).where(
                 CandidateMatch.organization_id == organization_id,
-                CandidateMatch.owner_id == owner_id,
                 CandidateMatch.candidate_id == match.candidate_id,
                 CandidateMatch.job_description_id == job_id,
             )

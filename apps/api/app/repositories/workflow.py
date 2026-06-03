@@ -19,11 +19,10 @@ class WorkflowRepository(BaseRepository[CandidatePipelineStage]):
         result = await self.db.execute(
             select(CandidatePipelineStage).where(
                 CandidatePipelineStage.organization_id == organization_id,
-                CandidatePipelineStage.owner_id == owner_id,
                 CandidatePipelineStage.candidate_id == candidate_id,
                 CandidatePipelineStage.job_description_id == job_description_id,
                 CandidatePipelineStage.deleted_at.is_(None),
-            )
+            ).order_by(CandidatePipelineStage.updated_at.desc()).limit(1)
         )
         return result.scalar_one_or_none()
 
@@ -32,7 +31,7 @@ class WorkflowRepository(BaseRepository[CandidatePipelineStage]):
             select(CandidatePipelineStage.stage, func.count())
             .where(
                 CandidatePipelineStage.organization_id == organization_id,
-                CandidatePipelineStage.owner_id == owner_id,
+                CandidatePipelineStage.deleted_at.is_(None),
             )
             .group_by(CandidatePipelineStage.stage)
         )
@@ -45,7 +44,10 @@ class RecruiterActivityRepository(BaseRepository[RecruiterActivity]):
     async def timeline(self, organization_id: UUID, owner_id: UUID, limit: int = 50) -> list[RecruiterActivity]:
         result = await self.db.execute(
             select(RecruiterActivity)
-            .where(RecruiterActivity.organization_id == organization_id, RecruiterActivity.owner_id == owner_id)
+            .where(
+                RecruiterActivity.organization_id == organization_id,
+                RecruiterActivity.deleted_at.is_(None),
+            )
             .order_by(RecruiterActivity.created_at.desc())
             .limit(limit)
         )

@@ -58,12 +58,12 @@ async def extract_job_description(
 
 @router.get("", response_model=list[JobDescriptionRead])
 async def list_jobs(auth: AuthContext = Depends(get_current_auth), db: AsyncSession = Depends(get_db)):
-    return await JobDescriptionRepository(db).list_active_for_owner(auth.organization_id, auth.user_id)
+    return await JobDescriptionRepository(db).list_active_for_org(auth.organization_id)
 
 
 @router.get("/{job_id}", response_model=JobDescriptionRead)
 async def get_job(job_id: UUID, auth: AuthContext = Depends(get_current_auth), db: AsyncSession = Depends(get_db)):
-    job = await JobDescriptionRepository(db).get_for_owner(job_id, auth.organization_id, auth.user_id)
+    job = await JobDescriptionRepository(db).get_for_org(job_id, auth.organization_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job description not found")
     return job
@@ -76,7 +76,7 @@ async def get_job_intelligence(
     db: AsyncSession = Depends(get_db),
 ):
     repository = JobDescriptionRepository(db)
-    job = await repository.get_for_owner(job_id, auth.organization_id, auth.user_id)
+    job = await repository.get_for_org(job_id, auth.organization_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job description not found")
 
@@ -84,7 +84,6 @@ async def get_job_intelligence(
         select(CandidateMatch.id)
         .where(
             CandidateMatch.organization_id == auth.organization_id,
-            CandidateMatch.owner_id == auth.user_id,
             CandidateMatch.job_description_id == job.id,
         )
         .limit(1)
@@ -101,14 +100,11 @@ async def get_job_intelligence(
             (ATSScore.candidate_id == CandidateMatch.candidate_id)
             & (ATSScore.job_description_id == CandidateMatch.job_description_id)
             & (ATSScore.organization_id == auth.organization_id)
-            & (ATSScore.owner_id == auth.user_id),
         )
         .where(
             CandidateMatch.organization_id == auth.organization_id,
-            CandidateMatch.owner_id == auth.user_id,
             CandidateMatch.job_description_id == job.id,
             Candidate.organization_id == auth.organization_id,
-            Candidate.owner_id == auth.user_id,
             Candidate.deleted_at.is_(None),
         )
         .order_by(
@@ -123,12 +119,11 @@ async def get_job_intelligence(
     all_missing: list[str] = []
     all_matched: list[str] = []
     for match, candidate, ats_score in rows.all():
-        resume = await candidate_repository.latest_resume(candidate.id, auth.organization_id, auth.user_id)
+        resume = await candidate_repository.latest_resume(candidate.id, auth.organization_id)
         stage = await db.scalar(
             select(CandidatePipelineStage.stage)
             .where(
                 CandidatePipelineStage.organization_id == auth.organization_id,
-                CandidatePipelineStage.owner_id == auth.user_id,
                 CandidatePipelineStage.candidate_id == candidate.id,
                 CandidatePipelineStage.job_description_id == job.id,
             )
@@ -176,7 +171,7 @@ async def delete_job(
     auth: AuthContext = Depends(require_roles(UserRole.admin, UserRole.recruiter)),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    job = await JobDescriptionRepository(db).get_for_owner(job_id, auth.organization_id, auth.user_id)
+    job = await JobDescriptionRepository(db).get_for_org(job_id, auth.organization_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job description not found")
     await DeleteWorkflowService(db).delete_job(job)
@@ -200,28 +195,25 @@ async def _ensure_ats_scores(db: AsyncSession, organization_id: UUID, owner_id: 
             (ATSScore.candidate_id == CandidateMatch.candidate_id)
             & (ATSScore.job_description_id == CandidateMatch.job_description_id)
             & (ATSScore.organization_id == organization_id)
-            & (ATSScore.owner_id == owner_id),
         )
         .where(
             CandidateMatch.organization_id == organization_id,
-            CandidateMatch.owner_id == owner_id,
             CandidateMatch.job_description_id == job_id,
             ATSScore.id.is_(None),
             Candidate.organization_id == organization_id,
-            Candidate.owner_id == owner_id,
             Candidate.deleted_at.is_(None),
         )
         .order_by(desc(CandidateMatch.overall_score))
         .limit(25)
     )
-    job = await JobDescriptionRepository(db).get_for_owner(job_id, organization_id, owner_id)
+    job = await JobDescriptionRepository(db).get_for_org(job_id, organization_id)
     if job is None:
         return
     for match, candidate in rows.all():
-        resume = await candidate_repository.latest_resume(candidate.id, organization_id, owner_id)
+        resume = await candidate_repository.latest_resume(candidate.id, organization_id)
         if resume is None:
             continue
-        skills = await candidate_repository.skills_for_candidate(candidate.id, organization_id, owner_id)
+        skills = await candidate_repository.skills_for_candidate(candidate.id, organization_id)
         await ATSScoringService(db).score_candidate_for_job(
             job,
             candidate,

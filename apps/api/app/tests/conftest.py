@@ -4,11 +4,21 @@ import asyncio
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import StaticPool
+from sqlalchemy.dialects.sqlite.base import SQLiteTypeCompiler
+from sqlalchemy.dialects.sqlite import JSON as SQLiteJSON
 
 from app.main import create_app
 from app.db.session import get_db
-from app.models.domain import Base
+from app.models.base import Base
+
+SQLiteTypeCompiler.visit_JSONB = SQLiteTypeCompiler.visit_JSON
+
+
+def _visit_uuid_for_sqlite(self, type_, **kw):
+    return "VARCHAR(36)"
+
+SQLiteTypeCompiler.visit_UUID = _visit_uuid_for_sqlite
 
 
 # Test database configuration
@@ -37,7 +47,7 @@ async def test_db():
     engine = create_async_engine(
         TEST_DATABASE_URL,
         connect_args={"check_same_thread": False},
-        poolclass=NullPool,
+        poolclass=StaticPool,
     )
 
     async with engine.begin() as conn:

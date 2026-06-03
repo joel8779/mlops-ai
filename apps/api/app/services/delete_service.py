@@ -59,8 +59,14 @@ class DeleteWorkflowService:
         )
         try:
             self.storage.delete_object(resume.storage_key)
-        except Exception:
-            resume.metadata_json = {**(resume.metadata_json or {}), "delete_file_warning": "storage_delete_failed"}
+        except Exception as exc:
+            logger.exception(
+                "storage_delete_failed",
+                resume_id=str(resume.id),
+                storage_key=resume.storage_key,
+                error=str(exc),
+            )
+            resume.metadata_json = {**(resume.metadata_json or {}), "delete_file_warning": "storage_delete_failed", "delete_error": str(exc)}
         resume.deleted_at = now
         await self.db.commit()
 
@@ -133,7 +139,13 @@ class DeleteWorkflowService:
             }
             await self.db.flush()
             await self.db.commit()
-        except Exception:
+        except Exception as exc:
+            logger.exception(
+                "candidate_delete_db_failed",
+                candidate_id=str(candidate.id),
+                resume_count=len(resumes),
+                error=str(exc),
+            )
             await self.db.rollback()
             raise
 
@@ -190,7 +202,6 @@ class DeleteWorkflowService:
     async def _delete_candidate_ats_scores(self, organization_id: UUID, candidate_id: UUID, resume_ids: list[UUID]) -> None:
         if await self._table_has_column("ats_scores", "candidate_id"):
             await self.db.execute(delete(ATSScore).where(ATSScore.organization_id == organization_id, ATSScore.candidate_id == candidate_id))
-            return
         if resume_ids and await self._table_has_column("ats_scores", "resume_id"):
             await self.db.execute(delete(ATSScore).where(ATSScore.organization_id == organization_id, ATSScore.resume_id.in_(resume_ids)))
 

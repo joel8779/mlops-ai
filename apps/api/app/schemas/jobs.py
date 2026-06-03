@@ -70,7 +70,7 @@ class JobParseResult(BaseModel):
 
 
 class JobExtractionPreview(BaseModel):
-    title: str
+    title: str | None
     description: str
     role_category: str | None
     years_experience_min: int | None

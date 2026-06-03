@@ -68,6 +68,11 @@ export default function LoginPage() {
               required
             />
           </label>
+          <div className="mt-3 text-right">
+            <Link href="/forgot-password" className="text-sm text-accent hover:underline">
+              Forgot Password?
+            </Link>
+          </div>
           <Button className="ops-button mt-5 w-full" disabled={loading}>
             {loading ? "Authenticating..." : "Enter command center"}
           </Button>

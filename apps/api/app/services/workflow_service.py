@@ -45,6 +45,39 @@ class WorkflowService:
         await self._activity(auth, "pipeline.stage_updated", payload.model_dump(mode="json"))
         await self.db.commit()
         await self.db.refresh(stage)
+
+        # Trigger email async if candidate is shortlisted
+        from app.models.domain import PipelineStage
+        if payload.stage == PipelineStage.shortlisted:
+            from app.repositories.candidates import CandidateRepository
+            from app.models.domain import Organization
+            from app.workers.job_tasks import send_shortlist_email_task
+
+            candidate = await CandidateRepository(self.db).get_for_org(payload.candidate_id, auth.organization_id)
+            org = await self.db.get(Organization, auth.organization_id)
+            org_name = org.name if org else "Our Organization"
+
+            job_title = "Position"
+            if payload.job_description_id is not None:
+                job = await JobDescriptionRepository(self.db).get_for_org(payload.job_description_id, auth.organization_id)
+                if job:
+                    job_title = job.title
+
+            if candidate and candidate.email:
+                try:
+                    send_shortlist_email_task.delay(
+                        str(stage.id),
+                        candidate.email,
+                        candidate.full_name or "Candidate",
+                        job_title,
+                        org_name,
+                        auth.email,
+                    )
+                except Exception as exc:
+                    import logging
+                    logger = logging.getLogger("app.services.workflow")
+                    logger.exception(f"Failed to queue shortlist email: {exc}")
+
         return stage
 
     async def add_note(self, auth: AuthContext, payload: RecruiterNoteCreate) -> RecruiterNote:
@@ -106,13 +139,27 @@ class WorkflowService:
         )
 
     async def _activity(self, auth: AuthContext, activity_type: str, payload: dict) -> None:
+        from uuid import UUID as PyUUID
+        candidate_id = payload.get("candidate_id")
+        if candidate_id and isinstance(candidate_id, str):
+            try:
+                candidate_id = PyUUID(candidate_id)
+            except ValueError:
+                pass
+        job_description_id = payload.get("job_description_id")
+        if job_description_id and isinstance(job_description_id, str):
+            try:
+                job_description_id = PyUUID(job_description_id)
+            except ValueError:
+                pass
+
         self.db.add(
             RecruiterActivity(
                 organization_id=auth.organization_id,
                 owner_id=auth.user_id,
                 user_id=auth.user_id,
-                candidate_id=payload.get("candidate_id"),
-                job_description_id=payload.get("job_description_id"),
+                candidate_id=candidate_id,
+                job_description_id=job_description_id,
                 activity_type=activity_type,
                 payload=payload,
             )

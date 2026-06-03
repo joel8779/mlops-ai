@@ -141,11 +141,6 @@ class GeminiProvider:
         self.token_tracker = token_tracker or TokenTracker()
         self.safety_filter = safety_filter or SafetyFilter()
 
-    @retry(
-        retry=retry_if_exception_type((Exception,)),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(min=1, max=8),
-    )
     async def complete(
         self,
         prompt: str,
@@ -166,6 +161,69 @@ class GeminiProvider:
         options = options or GenerationOptions()
         options.system_instruction = system
 
+        from datetime import datetime, timezone
+        from fastapi import HTTPException
+        from app.core.redis import get_redis_client
+
+        redis_client = get_redis_client()
+        now_dt = datetime.now(timezone.utc)
+        month_key = f"gemini:cost:{now_dt.strftime('%Y-%m')}"
+
+        # 1. Budget check
+        current_cost_str = await redis_client.get(month_key)
+        current_cost = float(current_cost_str) if current_cost_str else 0.0
+        if current_cost >= 100.0:
+            raise HTTPException(
+                status_code=429,
+                detail="Gemini API monthly budget exceeded.",
+                headers={"Retry-After": "3600"},
+            )
+
+        # 2. Concurrency limit (concurrency queue)
+        concurrency_key = "gemini:concurrency"
+        max_wait = 30.0
+        poll_interval = 0.5
+        waited = 0.0
+        acquired = False
+        while waited < max_wait:
+            current_val = await redis_client.incr(concurrency_key)
+            if current_val <= 5:
+                await redis_client.expire(concurrency_key, 60)
+                acquired = True
+                break
+            else:
+                await redis_client.decr(concurrency_key)
+                await asyncio.sleep(poll_interval)
+                waited += poll_interval
+
+        if not acquired:
+            raise HTTPException(
+                status_code=429,
+                detail="Gemini API concurrency limit exceeded. Please try again later.",
+                headers={"Retry-After": "5"},
+            )
+
+        try:
+            result = await self._complete_retried(prompt, system, options, feature)
+            # Update monthly cost
+            await redis_client.incrbyfloat(month_key, result.estimated_cost_usd)
+            return result
+        finally:
+            if acquired:
+                await redis_client.decr(concurrency_key)
+
+    @retry(
+        retry=retry_if_exception_type((Exception,)),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(min=1, max=8),
+    )
+    async def _complete_retried(
+        self,
+        prompt: str,
+        system: Optional[str],
+        options: GenerationOptions,
+        feature: str,
+    ) -> LLMResult:
         start_time = asyncio.get_event_loop().time()
         metric_start = llm_observer.start_timer()
 
@@ -246,11 +304,6 @@ class GeminiProvider:
             structured_data=structured_data,
         )
 
-    @retry(
-        retry=retry_if_exception_type((Exception,)),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(min=1, max=8),
-    )
     async def complete_stream(
         self,
         prompt: str,
@@ -273,29 +326,54 @@ class GeminiProvider:
         options = options or GenerationOptions()
         options.stream = True
         options.system_instruction = system
-        metric_start = llm_observer.start_timer()
 
-        config = self._build_generation_config(options)
-        safety_settings = self._build_safety_settings(options.safety_level)
-        content = self._prepare_content(prompt, system)
+        from datetime import datetime, timezone
+        from fastapi import HTTPException
+        from app.core.redis import get_redis_client
+
+        redis_client = get_redis_client()
+        now_dt = datetime.now(timezone.utc)
+        month_key = f"gemini:cost:{now_dt.strftime('%Y-%m')}"
+
+        # 1. Budget check
+        current_cost_str = await redis_client.get(month_key)
+        current_cost = float(current_cost_str) if current_cost_str else 0.0
+        if current_cost >= 100.0:
+            raise HTTPException(
+                status_code=429,
+                detail="Gemini API monthly budget exceeded.",
+                headers={"Retry-After": "3600"},
+            )
+
+        # 2. Concurrency limit (concurrency queue)
+        concurrency_key = "gemini:concurrency"
+        max_wait = 30.0
+        poll_interval = 0.5
+        waited = 0.0
+        acquired = False
+        while waited < max_wait:
+            current_val = await redis_client.incr(concurrency_key)
+            if current_val <= 5:
+                await redis_client.expire(concurrency_key, 60)
+                acquired = True
+                break
+            else:
+                await redis_client.decr(concurrency_key)
+                await asyncio.sleep(poll_interval)
+                waited += poll_interval
+
+        if not acquired:
+            raise HTTPException(
+                status_code=429,
+                detail="Gemini API concurrency limit exceeded. Please try again later.",
+                headers={"Retry-After": "5"},
+            )
 
         try:
-            with tracer.start_as_current_span("llm.gemini.stream") as span:
-                span.set_attribute("llm.provider", "gemini")
-                span.set_attribute("llm.model", self.model.value)
-                span.set_attribute("llm.feature", feature)
-                chunks = await asyncio.to_thread(
-                    lambda: list(
-                        self.client.models.generate_content_stream(
-                            model=self.model.value,
-                            contents=content,
-                            config={**config, "safety_settings": safety_settings},
-                        )
-                    )
-                )
-        except Exception as exc:
-            llm_observer.record_failure("gemini", self.model.value, feature, metric_start, exc)
-            raise
+            chunks = await self._complete_stream_retried(prompt, system, options, feature)
+        finally:
+            if acquired:
+                await redis_client.decr(concurrency_key)
 
         full_text = ""
         for chunk in chunks:
@@ -324,13 +402,51 @@ class GeminiProvider:
                 provider="gemini",
                 model=self.model.value,
                 feature=feature,
-                start_time=metric_start,
+                start_time=llm_observer.start_timer(),
                 prompt=prompt,
                 response=full_text,
                 input_tokens=prompt_tokens,
                 output_tokens=completion_tokens,
                 cost_usd=cost_usd,
             )
+            # Update monthly cost
+            await redis_client.incrbyfloat(month_key, cost_usd)
+
+    @retry(
+        retry=retry_if_exception_type((Exception,)),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(min=1, max=8),
+    )
+    async def _complete_stream_retried(
+        self,
+        prompt: str,
+        system: Optional[str],
+        options: GenerationOptions,
+        feature: str,
+    ) -> list[Any]:
+        config = self._build_generation_config(options)
+        safety_settings = self._build_safety_settings(options.safety_level)
+        content = self._prepare_content(prompt, system)
+        metric_start = llm_observer.start_timer()
+
+        try:
+            with tracer.start_as_current_span("llm.gemini.stream") as span:
+                span.set_attribute("llm.provider", "gemini")
+                span.set_attribute("llm.model", self.model.value)
+                span.set_attribute("llm.feature", feature)
+                chunks = await asyncio.to_thread(
+                    lambda: list(
+                        self.client.models.generate_content_stream(
+                            model=self.model.value,
+                            contents=content,
+                            config={**config, "safety_settings": safety_settings},
+                        )
+                    )
+                )
+                return chunks
+        except Exception as exc:
+            llm_observer.record_failure("gemini", self.model.value, feature, metric_start, exc)
+            raise
 
     async def complete_structured(
         self,

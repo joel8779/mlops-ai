@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
+from statistics import median
 from typing import Any, Optional
 from uuid import UUID
 
@@ -10,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from sqlalchemy.orm import selectinload
 
-from app.models.domain import Candidate, JobDescription, CandidatePipelineStage, RankingFeedback
+from app.models.domain import Candidate, JobDescription, CandidatePipelineStage, CandidateSkill, RankingFeedback
 
 
 class TimeGranularity(str, Enum):
@@ -71,14 +72,12 @@ class AnalyticsPipeline:
         candidates_query = select(func.count(Candidate.id)).where(
             and_(
                 Candidate.organization_id == organization_id,
+                Candidate.owner_id == user_id if user_id else Candidate.owner_id.isnot(None),
+                Candidate.deleted_at.is_(None),
                 Candidate.created_at >= start_date,
                 Candidate.created_at <= end_date,
             )
         )
-        if user_id:
-            # Filter by user who uploaded resumes (not directly available on Candidate)
-            # Skip user filter for candidates for now
-            pass
 
         candidates_count = await self.db.scalar(candidates_query)
         metrics.append(
@@ -95,6 +94,8 @@ class AnalyticsPipeline:
         jobs_query = select(func.count(JobDescription.id)).where(
             and_(
                 JobDescription.organization_id == organization_id,
+                JobDescription.owner_id == user_id if user_id else JobDescription.owner_id.isnot(None),
+                JobDescription.deleted_at.is_(None),
                 JobDescription.created_at >= start_date,
                 JobDescription.created_at <= end_date,
             )
@@ -117,6 +118,8 @@ class AnalyticsPipeline:
         feedback_query = select(func.count(RankingFeedback.id)).where(
             and_(
                 RankingFeedback.organization_id == organization_id,
+                RankingFeedback.owner_id == user_id if user_id else RankingFeedback.owner_id.isnot(None),
+                RankingFeedback.deleted_at.is_(None),
                 RankingFeedback.created_at >= start_date,
                 RankingFeedback.created_at <= end_date,
             )
@@ -140,12 +143,14 @@ class AnalyticsPipeline:
     async def compute_hiring_funnel(
         self,
         organization_id: UUID,
+        user_id: Optional[UUID] = None,
         job_id: Optional[UUID] = None,
     ) -> dict[str, int]:
         """Compute hiring funnel metrics.
 
         Args:
             organization_id: Organization ID
+            user_id: Optional user ID to filter by
             job_id: Optional job ID to filter by
 
         Returns:
@@ -160,8 +165,12 @@ class AnalyticsPipeline:
         }
 
         # Count candidates by hiring stage
-        query = select(CandidatePipelineStage.stage, func.count(CandidatePipelineStage.candidate_id)).where(
-            CandidatePipelineStage.organization_id == organization_id
+        query = select(CandidatePipelineStage.stage, func.count(func.distinct(CandidatePipelineStage.candidate_id))).where(
+            and_(
+                CandidatePipelineStage.organization_id == organization_id,
+                CandidatePipelineStage.owner_id == user_id if user_id else CandidatePipelineStage.owner_id.isnot(None),
+                CandidatePipelineStage.deleted_at.is_(None),
+            )
         ).group_by(CandidatePipelineStage.stage)
 
         if job_id:
@@ -179,7 +188,7 @@ class AnalyticsPipeline:
         organization_id: UUID,
         job_id: Optional[UUID] = None,
     ) -> dict[str, float]:
-        """Compute time-to-hire metrics.
+        """Compute time-to-hire metrics from stage transitions.
 
         Args:
             organization_id: Organization ID
@@ -188,13 +197,52 @@ class AnalyticsPipeline:
         Returns:
             Dictionary with time-to-hire metrics
         """
-        # This would require tracking hiring timestamps
-        # For now, return placeholder metrics
+        query = select(CandidatePipelineStage.candidate_id, CandidatePipelineStage.created_at).where(
+            and_(
+                CandidatePipelineStage.organization_id == organization_id,
+                CandidatePipelineStage.deleted_at.is_(None),
+            )
+        )
+
+        if job_id:
+            query = query.where(CandidatePipelineStage.job_description_id == job_id)
+
+        query = query.order_by(CandidatePipelineStage.candidate_id, CandidatePipelineStage.created_at)
+
+        result = await self.db.execute(query)
+
+        stage_durations: list[float] = []
+        candidate_stage_events: dict[UUID, list[datetime]] = {}
+        for candidate_id, timestamp in result:
+            candidate_stage_events.setdefault(candidate_id, []).append(timestamp)
+
+        for candidate_id, timestamps in candidate_stage_events.items():
+            ordered_timestamps = sorted(timestamps)
+            if len(ordered_timestamps) < 2:
+                continue
+            duration_days = (ordered_timestamps[-1] - ordered_timestamps[0]).total_seconds() / 86400
+            if duration_days >= 0:
+                stage_durations.append(duration_days)
+
+        if not stage_durations:
+            return {
+                "average_days": 0.0,
+                "median_days": 0.0,
+                "p25_days": 0.0,
+                "p75_days": 0.0,
+            }
+
+        ordered_durations = sorted(stage_durations)
+        average_days = sum(ordered_durations) / len(ordered_durations)
+        median_days = median(ordered_durations)
+        p25_days = ordered_durations[max(0, int((0.25 * len(ordered_durations)) - 1))]
+        p75_days = ordered_durations[max(0, int((0.75 * len(ordered_durations)) - 1))]
+
         return {
-            "average_days": 45.0,
-            "median_days": 38.0,
-            "p25_days": 21.0,
-            "p75_days": 60.0,
+            "average_days": round(average_days, 2),
+            "median_days": round(median_days, 2),
+            "p25_days": round(p25_days, 2),
+            "p75_days": round(p75_days, 2),
         }
 
     async def compute_ai_ranking_accuracy(
@@ -211,7 +259,11 @@ class AnalyticsPipeline:
         """
         # Get feedback events
         query = select(RankingFeedback).where(
-            RankingFeedback.organization_id == organization_id
+            and_(
+                RankingFeedback.organization_id == organization_id,
+                RankingFeedback.owner_id.isnot(None),
+                RankingFeedback.deleted_at.is_(None),
+            )
         )
 
         result = await self.db.execute(query)
@@ -241,7 +293,7 @@ class AnalyticsPipeline:
         organization_id: UUID,
         days: int = 90,
     ) -> list[dict[str, Any]]:
-        """Compute skill demand trends.
+        """Compute skill demand trends from normalized candidate skills.
 
         Args:
             organization_id: Organization ID
@@ -250,11 +302,60 @@ class AnalyticsPipeline:
         Returns:
             List of skill trend data
         """
-        # This would require skill extraction and tracking
-        # For now, return placeholder data
-        return [
-            {"skill": "Python", "demand": 85, "trend": "+12%"},
-            {"skill": "Machine Learning", "demand": 72, "trend": "+18%"},
-            {"skill": "React", "demand": 65, "trend": "+5%"},
-            {"skill": "AWS", "demand": 58, "trend": "+8%"},
-        ]
+        end_date = datetime.now(timezone.utc)
+        start_date = end_date - timedelta(days=days)
+        previous_start = end_date - timedelta(days=days * 2)
+
+        current_query = (
+            select(
+                CandidateSkill.normalized_skill,
+                func.count(CandidateSkill.id).label("demand"),
+            )
+            .where(
+                and_(
+                    CandidateSkill.organization_id == organization_id,
+                    CandidateSkill.deleted_at.is_(None),
+                    CandidateSkill.created_at >= start_date,
+                    CandidateSkill.created_at <= end_date,
+                )
+            )
+            .group_by(CandidateSkill.normalized_skill)
+            .order_by(func.count(CandidateSkill.id).desc())
+        )
+
+        previous_query = (
+            select(
+                CandidateSkill.normalized_skill,
+                func.count(CandidateSkill.id).label("demand"),
+            )
+            .where(
+                and_(
+                    CandidateSkill.organization_id == organization_id,
+                    CandidateSkill.deleted_at.is_(None),
+                    CandidateSkill.created_at >= previous_start,
+                    CandidateSkill.created_at < start_date,
+                )
+            )
+            .group_by(CandidateSkill.normalized_skill)
+        )
+
+        current_result = await self.db.execute(current_query)
+        previous_result = await self.db.execute(previous_query)
+
+        current_counts = {row.normalized_skill: row.demand for row in current_result}
+        previous_counts = {row.normalized_skill: row.demand for row in previous_result}
+
+        trends: list[dict[str, Any]] = []
+        for skill, demand in current_counts.items():
+            previous_demand = previous_counts.get(skill, 0)
+            trend_change = demand - previous_demand
+            percent_change = round((trend_change / max(previous_demand, 1)) * 100)
+            trend = f"{'+' if percent_change > 0 else ''}{percent_change}%"
+            trends.append({
+                "skill": skill,
+                "demand": int(demand),
+                "trend": trend,
+            })
+
+        trends.sort(key=lambda item: item["demand"], reverse=True)
+        return trends

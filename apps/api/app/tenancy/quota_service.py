@@ -9,7 +9,11 @@ class QuotaService:
         self.db = db
 
     async def enforce(self, organization_id, metric: str, increment: int = 1) -> None:
-        quota = await self.db.get(TenantQuota, organization_id)
+        from sqlalchemy import select
+        result = await self.db.execute(
+            select(TenantQuota).where(TenantQuota.organization_id == organization_id)
+        )
+        quota = result.scalar_one_or_none()
         if quota is None:
             return
         limit = {

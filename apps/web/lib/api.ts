@@ -3,6 +3,7 @@ export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://loca
 // Token management
 const ACCESS_TOKEN_KEY = "access_token";
 const REFRESH_TOKEN_KEY = "refresh_token";
+const AUTH_STORAGE_KEYS = [ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY];
 
 type TokenPair = {
   access_token: string;
@@ -10,14 +11,32 @@ type TokenPair = {
   token_type: string;
 };
 
+type RegisterResponse = {
+  success: boolean;
+  message: string;
+  email: string;
+  organization_name: string;
+  requires_otp: boolean;
+};
+
 export function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(ACCESS_TOKEN_KEY);
+  const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+  if (token && isJwtExpired(token)) {
+    clearTokens();
+    return null;
+  }
+  return token;
 }
 
 export function getRefreshToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem(REFRESH_TOKEN_KEY);
+  const token = localStorage.getItem(REFRESH_TOKEN_KEY);
+  if (token && isJwtExpired(token)) {
+    clearTokens();
+    return null;
+  }
+  return token;
 }
 
 export function setTokens(accessToken: string, refreshToken: string): void {
@@ -30,10 +49,26 @@ export function setTokens(accessToken: string, refreshToken: string): void {
 
 export function clearTokens(): void {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(ACCESS_TOKEN_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
-  document.cookie = `${ACCESS_TOKEN_KEY}=; path=/; max-age=0; SameSite=Lax`;
-  document.cookie = `${REFRESH_TOKEN_KEY}=; path=/; max-age=0; SameSite=Lax`;
+  AUTH_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+  Object.keys(localStorage)
+    .filter((key) => key.startsWith("auth:") || key.startsWith("recruiter:") || key.startsWith("org:"))
+    .forEach((key) => localStorage.removeItem(key));
+  Object.keys(sessionStorage)
+    .filter((key) => key.startsWith("auth:") || key.startsWith("recruiter:") || key.startsWith("org:"))
+    .forEach((key) => sessionStorage.removeItem(key));
+  document.cookie = `${ACCESS_TOKEN_KEY}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax`;
+  document.cookie = `${REFRESH_TOKEN_KEY}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax`;
+  window.dispatchEvent(new Event("auth:cleared"));
+}
+
+function isJwtExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1] ?? ""));
+    if (!payload.exp) return false;
+    return payload.exp * 1000 <= Date.now();
+  } catch {
+    return true;
+  }
 }
 
 // Token refresh
@@ -87,7 +122,7 @@ export async function apiFetch<T>(
   });
 
   // Handle 401 Unauthorized - try to refresh token
-  if (response.status === 401 && accessToken && retryCount === 0) {
+  if (response.status === 401 && !init?.skipAuth && accessToken && retryCount === 0) {
     try {
       const newToken = await refreshAccessToken();
       // Retry with new token
@@ -100,6 +135,14 @@ export async function apiFetch<T>(
       }
       throw new Error("Authentication failed");
     }
+  }
+
+  if (response.status === 401 && !init?.skipAuth) {
+    clearTokens();
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+    throw new Error("Authentication failed");
   }
 
   if (!response.ok) {
@@ -125,8 +168,8 @@ export async function apiFetch<T>(
 
 // Auth API
 export const authApi = {
-  async register(data: { email: string; password: string; full_name: string; organization_name: string }) {
-    return apiFetch<TokenPair>("/auth/register", {
+  async register(data: { email: string; password: string; full_name: string; organization_name: string; organization_pin: string }) {
+    return apiFetch<RegisterResponse>("/auth/register", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -143,11 +186,54 @@ export const authApi = {
     return apiFetch("/auth/me");
   },
 
-  logout() {
-    clearTokens();
-    if (typeof window !== "undefined") {
-      window.location.href = "/";
+  async logout() {
+    try {
+      await apiFetch("/auth/logout", {
+        method: "POST",
+      });
+    } finally {
+      clearTokens();
     }
+  },
+
+  async sendOtp(email: string) {
+    return apiFetch("/auth/send-otp", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      skipAuth: true,
+    });
+  },
+
+  async verifyOtp(email: string, otp_code: string) {
+    return apiFetch("/auth/verify-otp", {
+      method: "POST",
+      body: JSON.stringify({ email, otp_code }),
+      skipAuth: true,
+    });
+  },
+
+  async forgotPassword(email: string) {
+    return apiFetch<{ success: boolean; message: string }>("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      skipAuth: true,
+    });
+  },
+
+  async verifyResetOtp(email: string, otp_code: string) {
+    return apiFetch<{ success: boolean; message: string; reset_token: string }>("/auth/verify-reset-otp", {
+      method: "POST",
+      body: JSON.stringify({ email, otp_code }),
+      skipAuth: true,
+    });
+  },
+
+  async resetPassword(data: { email: string; reset_token: string; new_password: string; confirm_password: string }) {
+    return apiFetch<{ success: boolean; message: string }>("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify(data),
+      skipAuth: true,
+    });
   },
 };
 

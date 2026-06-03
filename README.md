@@ -1,289 +1,197 @@
 # AI Resume Intelligence Platform
 
-[![Backend CI](https://img.shields.io/badge/backend-ci-green)](.github/workflows/backend-ci.yml)
-[![Frontend CI](https://img.shields.io/badge/frontend-ci-green)](.github/workflows/frontend-ci.yml)
-[![Security CI](https://img.shields.io/badge/security-ci-green)](.github/workflows/security-ci.yml)
-[![Docker CI](https://img.shields.io/badge/docker-ci-green)](.github/workflows/docker-ci.yml)
-[![MLOps](https://img.shields.io/badge/mlops-mlflow-blue)](docs/ml-architecture.md)
-
-Enterprise-grade AI hiring infrastructure for resume intelligence, semantic candidate search, recruiter workflows, learning-to-rank, and RAG copilot experiences.
-
-## 🚀 Features
-
-### AI-Powered Recruiting
-- **Semantic Search**: Find candidates using natural language queries with vector embeddings
-- **AI Copilot**: RAG-powered assistant for answering recruiting questions with citations
-- **Candidate Ranking**: Hybrid scoring combining semantic similarity, skills, experience, and feedback
-- **ATS Scoring**: Automated resume scoring against job descriptions
-- **Interview Generation**: AI-generated interview questions tailored to candidates and roles
-- **Candidate Comparison**: AI-powered comparison of multiple candidates
-
-### Resume Intelligence
-- **OCR Extraction**: Extract text from PDF, DOCX, and image resumes
-- **Skill Extraction**: Automatic skill identification and normalization
-- **Embedding Generation**: Vector embeddings for semantic search
-- **Resume Parsing**: Structured data extraction from unstructured resumes
-
-### Recruiter Workflows
-- **Pipeline Management**: Track candidates through hiring stages
-- **Recruiter Notes**: Add and view notes on candidates
-- **Bookmarks**: Save candidates for later review
-- **Activity Tracking**: Log all recruiter actions
-- **Feedback Loop**: Learn from recruiter decisions
-
-### Analytics & Insights
-- **Executive Dashboard**: High-level hiring metrics
-- **Hiring Funnel**: Visualize pipeline conversion
-- **Skill Analytics**: Track skill demand and trends
-- **Recruiter Efficiency**: Measure productivity and automation
-- **Ranking Accuracy**: Monitor AI model performance
-
-### Enterprise Features
-- **Multi-tenant**: Organization-based data isolation
-- **RBAC**: Role-based access control (admin, recruiter)
-- **Audit Logging**: Track all system actions
-- **API Keys**: Secure API access for integrations
-- **Rate Limiting**: Protect against abuse
-- **Webhooks**: Real-time event notifications
-
-## 🏗️ Architecture
-
-```mermaid
-flowchart LR
-  Web[Next.js Recruiter UI] --> API[FastAPI]
-  API --> PG[(PostgreSQL)]
-  API --> Redis[(Redis Streams + Celery)]
-  API --> Qdrant[(Qdrant Vector DB)]
-  API --> LLM[Google Gemini]
-  Redis --> Worker[Workers]
-  Worker --> MLflow[MLflow Registry]
-  Worker --> MinIO[(MinIO Storage)]
-```
-
-### Tech Stack
-
-**Backend**
-- FastAPI 0.115+ (Python 3.11+)
-- PostgreSQL 15+ with AsyncPG
-- Redis 7+ (caching, streams, Celery broker)
-- Qdrant 1.7+ (vector database)
-- MinIO/S3 (object storage)
-- Celery (async task processing)
-- MLflow (ML experiment tracking)
-- Google Gemini 2.5 (LLM)
-- sentence-transformers (embeddings)
-
-**Frontend**
-- Next.js 15 (React 18)
-- TypeScript 5.4+
-- TailwindCSS (styling)
-- React Query (data fetching)
-- Zustand (state management)
-- Recharts (data visualization)
-
-**DevOps**
-- Docker & Docker Compose
-- GitHub Actions (CI/CD)
-- Kubernetes (orchestration)
-- Helm (package management)
-- Prometheus & Grafana (monitoring)
-- OpenTelemetry & Jaeger (tracing)
-- Loki (log aggregation)
-
-## 📸 Screenshots
-
-### Dashboard
-![Dashboard](docs/assets/dashboard.png)
-*Executive dashboard with hiring funnel, top skills, and efficiency metrics*
-
-### Semantic Search
-![Semantic Search](docs/assets/search.png)
-*Natural language search with skill filters and location filtering*
-
-### AI Copilot
-![AI Copilot](docs/assets/copilot.png)
-*RAG-powered assistant with citations and confidence scores*
-
-### Candidate Profile
-![Candidate Profile](docs/assets/candidate.png)
-*Detailed candidate view with skills, resume, and match scores*
-
-### Analytics
-![Analytics](docs/assets/analytics.png)
-*Hiring analytics with funnel visualization and skill trends*
-
-## 🎬 Demo GIFs
-
-### Resume Upload
-![Resume Upload](docs/assets/resume-upload.gif)
-*Upload and process resumes with AI extraction*
-
-### Candidate Ranking
-![Candidate Ranking](docs/assets/ranking.gif)
-*Rank candidates with AI-powered scoring*
-
-### Interview Generation
-![Interview Generation](docs/assets/interview.gif)
-*Generate interview questions with AI*
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Docker & Docker Compose
-- Python 3.11+
-- Node.js 18+
-- PostgreSQL 15+
-- Redis 7+
-
-### Local Development
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/mlops-ai.git
-cd mlops-ai
-
-# Copy environment file
-cp .env.example .env
-
-# Start infrastructure
-docker compose up -d postgres redis qdrant minio
-
-# Run database migrations
-docker compose exec api alembic upgrade head
-
-# Start backend
-cd apps/api
-uvicorn app.main:create_app --reload --host 0.0.0.0 --port 8000
-
-# Start frontend (new terminal)
-cd apps/web
-npm install
-npm run dev
-```
-
-### Seed Demo Data
-
-```bash
-cd apps/api
-python scripts/seed_demo_data.py
-```
-
-This creates:
-- 3 organizations
-- 4 recruiters
-- 3 job descriptions
-- 5 candidates with resumes
-- Candidate matches, pipeline stages, and analytics
-
-### Access Points
-
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **API Docs**: http://localhost:8000/docs
-- **Health Check**: http://localhost:8000/health
-- **Metrics**: http://localhost:8000/metrics
-
-## 📖 Documentation
-
-- [Architecture](docs/architecture.md) - System architecture and data flows
-- [API Route Audit](docs/api-route-audit.md) - API endpoint validation
-- [Auth Validation](docs/auth-validation.md) - Authentication flow
-- [Resume Ingestion](docs/resume-ingestion-validation.md) - Resume processing pipeline
-- [Gemini Validation](docs/gemini-validation.md) - AI integration
-- [Semantic Search](docs/semantic-search-validation.md) - Search implementation
-- [Frontend Integration](docs/frontend-backend-integration.md) - Frontend/backend connection
-- [Demo Scenarios](docs/demo-scenarios.md) - Demo walkthroughs
-
-## 🔒 Security
-
-- JWT authentication with refresh tokens
-- Bcrypt password hashing
-- Role-based access control (RBAC)
-- Organization-level data isolation
-- Rate limiting
-- CORS configuration
-- SQL injection prevention
-- XSS protection
-- PII masking in logs
-- Audit logging
-
-## 📊 Observability
-
-- **Metrics**: Prometheus (API latency, embedding latency, ranking latency, LLM cost)
-- **Logs**: Structured JSON logs with Loki
-- **Tracing**: OpenTelemetry with Jaeger
-- **Health Checks**: `/health`, `/ready`, `/live` endpoints
-- **Error Tracking**: Structured error logging
-
-## 🚢 Deployment
-
-### Docker Compose
-
-```bash
-docker compose up -d
-```
-
-### Kubernetes
-
-```bash
-kubectl apply -f infra/k8s/
-```
-
-### Helm
-
-```bash
-helm install resume-intelligence infra/helm/resume-intelligence
-```
-
-### Terraform
-
-```bash
-cd infra/terraform
-terraform init
-terraform apply
-```
-
-## 🧪 Testing
-
-```bash
-# Backend tests
-cd apps/api
-pytest
-
-# Frontend tests
-cd apps/web
-npm test
-
-# Integration tests
-pytest tests/integration/
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests
-5. Submit a pull request
-
-## 📝 License
-
-MIT License - see LICENSE file for details
-
-## 🙏 Acknowledgments
-
-- FastAPI for the excellent web framework
-- Qdrant for the vector database
-- Google for Gemini AI
-- sentence-transformers for embeddings
-- The open-source community
-
-## 📞 Contact
-
-- **Issues**: GitHub Issues
-- **Discussions**: GitHub Discussions
-- **Email**: your.email@example.com
+[![Backend CI](https://img.shields.io/badge/backend--ci-green.svg)](.github/workflows/backend-ci.yml)
+[![Frontend CI](https://img.shields.io/badge/frontend--ci-green.svg)](.github/workflows/frontend-ci.yml)
+[![Security CI](https://img.shields.io/badge/security--ci-green.svg)](.github/workflows/security-ci.yml)
+[![Docker CI](https://img.shields.io/badge/docker--ci-green.svg)](.github/workflows/docker-ci.yml)
+[![MLOps](https://img.shields.io/badge/mlops-mlflow-blue.svg)](docs/ml-architecture.md)
+
+An enterprise-grade, multi-tenant Applicant Tracking System (ATS) and Resume Intelligence platform. Powered by hybrid semantic ranking, structured resume parsing, RAG-enabled recruitment assistance, and strict tenant isolation.
 
 ---
 
-Built with ❤️ for modern recruiting teams
+## 📸 Dashboard Preview
+
+![Platform Dashboard](docs/screenshots/01_homepage.png)
+*Executive dashboard visualizing recruitment funnel progress, skill distributions, and recent applicant activity.*
+
+---
+
+## 📖 Overview
+
+The **AI Resume Intelligence Platform** is built to modernize high-scale recruitment pipelines. Unlike traditional keyword-based ATS tools, this platform extracts deep semantic meaning from applicant profiles. It combines strict multi-tenant database isolation, async Celery worker task queues, and vector search indexing via Qdrant with large language model context matching to provide recruiters with a secure and context-aware workspace.
+
+---
+
+## 🛠️ Core Features
+
+- **Multi-Tenant Isolation**: Rigid logical separation of data at the organization level (`organization_id` filters applied across all tables and vector database payloads).
+- **Structured Resume Ingestion**: Async parsing pipelines extracting skills, experience timelines, education, and summaries from PDFs, Word documents, and images.
+- **Hybrid ATS Matching**: Custom matching engine scoring applicants based on:
+  - Vector similarity of resume text to the job description (using Qdrant).
+  - Skill overlap (Jaccard similarity index on normalized candidate skills vs. job requirements).
+  - Experience timeline matching (years of experience comparison).
+  - Keyword density metrics.
+- **RAG Recruiter Copilot**: Interactive assistant allowing recruiters to ask natural language questions (e.g. *"Show me candidates with experience scaling PyTorch models"*) with citations and confidence metrics.
+- **Recruiter Command Center**: Interactive kanban board for moving applicants across stages (`ranked`, `shortlisted`, `interviewing`, `rejected`, `hired`), logging notes, and activity auditing.
+- **Security-First Foundations**: Magic-number file scanners, Redis-based sliding window rate-limiting, double JWT token authentication (access + refresh), and PII masking.
+
+---
+
+## 🏗️ System Architecture
+
+```mermaid
+flowchart TD
+    Client[Next.js Frontend] <-->|HTTPS / WS| Nginx[Nginx Load Balancer]
+    Nginx <--> API[FastAPI Gateway]
+    API <-->|Rate Limit / Cache| Redis[Redis Queue & Cache]
+    API <-->|Transactional State| PG[(PostgreSQL DB)]
+    API <-->|Vector Index| Qdrant[(Qdrant Vector DB)]
+    API <-->|Copilot / Parser| Gemini[Google Gemini AI]
+    Redis <-->|Async Job Handling| Worker[Celery Workers]
+    Worker -->|Model Experiments| MLflow[MLflow Server]
+    Worker -->|Document Storage| MinIO[(MinIO S3 Storage)]
+```
+
+### Technology Stack
+
+| Layer | Technologies |
+|---|---|
+| **Frontend** | React 18, Next.js 15, TypeScript 5.4, TailwindCSS, Zustand, Recharts, React Query |
+| **Backend Gateway** | Python 3.11, FastAPI 0.115, SQLAlchemy 2.0 (AsyncPG), Alembic migrations |
+| **Task Queue & Caching** | Celery, Redis 7 (sliding window rate-limiter, streams broker) |
+| **Vector DB** | Qdrant 1.12 (HNSW-indexed vector search, payload filtering) |
+| **Object Storage** | MinIO (local S3 API parity for resume document hosting) |
+| **AI / Embeddings** | Gemini Pro 2.5 (parsing, copilot), SentenceTransformers (`all-MiniLM-L6-v2`) |
+| **Telemetry & Observability** | Prometheus, Grafana, OpenTelemetry, MLflow |
+
+---
+
+## 📂 Folder Structure
+
+```
+├── apps/
+│   ├── api/                 # FastAPI Backend app (models, api endpoints, workers)
+│   └── web/                 # Next.js Frontend portal (UI dashboard, auth, components)
+├── packages/
+│   └── shared/              # Placeholder for shared libraries
+├── infra/
+│   ├── nginx/               # Nginx reverse-proxy config
+│   ├── k8s/                 # Kubernetes secret and deployment manifests
+│   ├── helm/                # Helm charts for automated stack installs
+│   └── terraform/           # Terraform config files
+├── docs/
+│   ├── screenshots/         # Captured screenshot files
+│   └── *.md                 # System validation reports and architectures
+├── scripts/
+│   ├── reset_dev_data.py    # Purges development database and vector collections
+│   └── seed_talentflow_demo.py  # Populates the demo workspace data
+└── docker-compose.yml       # Dev/production service orchestrator
+```
+
+---
+
+## ⚡ Core Flows
+
+### 1. The AI Ingestion Pipeline
+1. **Upload**: Recruiter uploads a PDF, DOCX, or image resume.
+2. **Scanner Validation**: File bytes are scanned for magic numbers (e.g. `%PDF-1.4`) to prevent malicious renaming scripts.
+3. **Storage**: The file is saved to S3/MinIO bucket.
+4. **Extraction**: Gemini parses the file contents into structured JSON schemas (skills, work history, education).
+5. **Embedding**: Extracted text chunks are processed through a local sentence transformer model to generate 384-dimensional dense vectors.
+6. **Upsert**: Vectors are loaded into Qdrant indexed by `organization_id` and `owner_id`.
+
+### 2. Hybrid ATS Score Generation
+When candidate resumes are evaluated against a Job Description (JD), the platform executes a hybrid score matrix:
+```
+Overall Match Score = (w1 * Vector_Similarity) + (w2 * Skill_Overlap) + (w3 * Experience_Match) + (w4 * Keyword_Overlap)
+```
+- **Vector Similarity**: Distance score of the candidate's resume embedding vs. job description query vector.
+- **Skill Overlap**: Calculated on matching required and optional skills.
+- **Experience Match**: Penalizes candidates falling below the years of experience floor specified in the JD.
+
+---
+
+## 🚀 Local Development Setup
+
+### 1. Prerequisites
+- Docker and Docker Compose installed.
+- Python 3.11+ and Node.js 18+ (for running applications locally outside Docker).
+
+### 2. Startup Infrastructure
+Start all core databases, vector spaces, and queue backends:
+```bash
+docker compose up -d postgres redis qdrant minio mlflow
+```
+
+### 3. Setup Backend API
+1. Navigate to the backend directory and configure the environment:
+   ```bash
+   cd apps/api
+   cp .env.example .env
+   ```
+2. Create a virtual environment and install dependencies:
+   ```bash
+   python -m venv .venv
+   Source-env:
+     # Windows:
+     .venv\Scripts\activate
+     # Linux/macOS:
+     source .venv/bin/activate
+   pip install -r requirements-core.txt -r requirements-worker.txt
+   ```
+3. Run Alembic database migrations:
+   ```bash
+   alembic upgrade head
+   ```
+4. Start the FastAPI development server:
+   ```bash
+   uvicorn app.main:create_app --reload --host 0.0.0.0 --port 8000
+   ```
+
+### 4. Setup Frontend Portal
+1. Navigate to the frontend directory:
+   ```bash
+   cd ../../apps/web
+   npm install
+   ```
+2. Launch the Next.js development server:
+   ```bash
+   npm run dev
+   ```
+
+### 5. Seed Database with Portfolio Data
+Populate the database with a clean, fully-indexed workspace:
+```bash
+# In the root workspace folder:
+.venv\Scripts\python scripts\seed_talentflow_demo.py
+```
+This script configures:
+- **Organization**: `TalentFlow`
+- **User / Credentials**: `recruiter_a@talentflow.com` (Password: `demo123`)
+- **Data**: 2 Jobs, 3 Candidates, and pre-calculated hybrid matching matrix results.
+
+---
+
+## 🔒 Security Practices
+
+- **Bcrypt Hashing**: Secure password encryption stored in the PostgreSQL database.
+- **Sliding-Window Rate-Limiter**: Implemented in Redis to protect authentication endpoints from brute-force attempts.
+- **Tenant Isolation Constraint**: SQL queries join the user session context `organization_id` directly, ensuring no cross-org leakages can occur.
+- **Sanitizers & Scanners**: Reject scripts, mask sensitive data, and enforce magic file header verification.
+
+---
+
+## 🚀 Deployment Parity
+
+This repository contains deployment configurations matching modern cloud platforms:
+- **Vercel** (`apps/web/vercel.json`): Configurations for the Next.js frontend.
+- **Railway** (`apps/api/railway.toml`): Configurations for backend migrations, health checks, and running web/worker scaling components.
+- **Kubernetes** (`infra/k8s/`): Deployment manifests for scalable containers.
+- **Nginx** (`infra/nginx/nginx.conf`): Stateless load balancing setup.
+
+---
+
+## 📝 License
+
+Distributed under the MIT License. See [LICENSE](LICENSE) for details.

@@ -5,6 +5,35 @@ import { Bot, Loader2 } from "lucide-react";
 import AppShell from "@/components/app-shell";
 import { aiApi, candidatesApi } from "@/lib/api";
 
+const SUMMARY_SECTIONS = [
+  "Candidate Overview",
+  "Technical Strengths",
+  "Relevant Experience",
+  "Hiring Concerns",
+  "Recommended Fit",
+  "Interview Focus Areas",
+];
+
+function parseBriefing(value: string) {
+  const clean = value.replace(/\*\*/g, "").trim();
+  if (!clean) return [];
+  const sectionPattern = new RegExp(`^(${SUMMARY_SECTIONS.join("|")})\\s*$`, "gim");
+  const matches = [...clean.matchAll(sectionPattern)];
+  if (!matches.length) return [{ title: "Candidate Overview", body: clean, bullets: [] }];
+  return matches.map((match, index) => {
+    const title = match[1];
+    const start = (match.index ?? 0) + match[0].length;
+    const end = index + 1 < matches.length ? matches[index + 1].index ?? clean.length : clean.length;
+    const body = clean.slice(start, end).trim();
+    const lines = body.split(/\n+/).map((line) => line.replace(/^[-•]\s*/, "").trim()).filter(Boolean);
+    return {
+      title,
+      body: title === "Candidate Overview" ? lines.join(" ") : "",
+      bullets: title === "Candidate Overview" ? [] : lines,
+    };
+  });
+}
+
 export default function CandidateProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [candidate, setCandidate] = useState<any>(null);
@@ -18,7 +47,9 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
       setLoading(true);
       setError("");
       try {
-        setCandidate(await candidatesApi.get(id));
+        const candidateData = await candidatesApi.get(id) as any;
+        setCandidate(candidateData);
+        setSummary(candidateData.summary || "");
       } catch (err: any) {
         setError(err.message || "Unable to load candidate");
       } finally {
@@ -33,7 +64,14 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
     setError("");
     try {
       const response = (await aiApi.summary(id)) as any;
-      setSummary(response.answer || response.summary || "");
+      const answerText = String(response.answer ?? "").trim();
+      const summaryText = String(response.summary ?? "").trim();
+      const nextSummary = answerText || summaryText || candidate?.summary || "";
+      setSummary(nextSummary);
+      if (answerText || summaryText) {
+        const newSummary = answerText || summaryText;
+        setCandidate((prev: any) => (prev ? { ...prev, summary: newSummary } : prev));
+      }
     } catch (err: any) {
       setError(err.message || "Unable to generate summary");
     } finally {
@@ -55,8 +93,10 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
             <div className="ops-panel-strong rounded-xl p-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="text-xs uppercase tracking-[0.28em] text-accent">Candidate dossier</div>
-                <h1 className="mt-2 text-xl font-semibold">{candidate?.full_name || candidate?.email || "Candidate"}</h1>
-                <p className="text-sm text-foreground-muted">{candidate?.headline || candidate?.location || "Profile details from parsed resume data."}</p>
+                <h1 className="mt-2 text-xl font-semibold">{candidate?.full_name || candidate?.email || "Unnamed candidate"}</h1>
+                {(candidate?.headline || candidate?.location) && (
+                  <p className="text-sm text-foreground-muted">{candidate?.headline || candidate?.location}</p>
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
                 <button onClick={generateSummary} disabled={aiLoading} className="ops-button inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-60">
@@ -68,17 +108,33 @@ export default function CandidateProfilePage({ params }: { params: Promise<{ id:
             {error && <div className="rounded-lg border border-error/30 bg-error/10 p-4 text-sm text-error">{error}</div>}
             <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
               <section className="ops-panel rounded-xl p-5">
-                <h2 className="text-base font-semibold">Candidate profile</h2>
-                <p className="mt-3 text-sm leading-6 text-foreground-muted">
-                  {summary || candidate?.summary || "No AI summary or extracted profile summary is available yet."}
-                </p>
+                <h2 className="text-base font-semibold">Recruiter briefing</h2>
+                <div className="mt-4 grid gap-3">
+                  {parseBriefing(summary || candidate?.summary || "").map((section) => (
+                    <div key={section.title} className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                      <h3 className="text-sm font-semibold text-foreground">{section.title}</h3>
+                      {section.body && <p className="mt-2 text-sm leading-6 text-foreground-muted">{section.body}</p>}
+                      {section.bullets.length > 0 && (
+                        <ul className="mt-2 space-y-1.5 text-sm leading-6 text-foreground-muted">
+                          {section.bullets.slice(0, 6).map((item) => (
+                            <li key={item} className="flex gap-2">
+                              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                  {!summary && !candidate?.summary && <p className="text-sm text-foreground-muted">Generate a recruiter briefing for this candidate.</p>}
+                </div>
                 <div className="mt-5 flex flex-wrap gap-2">
                   {(candidate?.skills || []).map((skill: string) => (
                     <span key={skill} className="ops-chip rounded-md px-2 py-1 text-xs">
                       {skill}
                     </span>
                   ))}
-                  {(!candidate?.skills || candidate.skills.length === 0) && <span className="text-sm text-foreground-muted">No skills extracted.</span>}
+                  {(!candidate?.skills || candidate.skills.length === 0) && <span className="text-sm text-foreground-muted">Skills unavailable.</span>}
                 </div>
                 {candidate?.resume_text_preview && (
                   <div className="mt-5 rounded-lg border border-white/10 bg-white/[0.03] p-4">

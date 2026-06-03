@@ -1,13 +1,19 @@
 from dataclasses import asdict, dataclass
+import time
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
+from app.logging import get_logger
 from app.core.config import settings
 from app.db.session import engine
 
 
-EXPECTED_ALEMBIC_HEAD = "0006_owner_isolation"
+EXPECTED_ALEMBIC_HEAD = "0010_composite_indexes"
+SCHEMA_REPORT_CACHE_SECONDS = 30
+logger = get_logger(__name__)
+_cached_schema_report: tuple[float, "RuntimeSchemaReport"] | None = None
 
 CRITICAL_COLUMNS: dict[str, set[str]] = {
     "ats_scores": {
@@ -59,6 +65,7 @@ class RuntimeSchemaReport:
     expected_revision: str
     current_revision: str | None
     drift: list[SchemaDrift]
+    error: str | None = None
 
     @property
     def ready(self) -> bool:
@@ -71,12 +78,48 @@ class RuntimeSchemaReport:
             "expected_revision": self.expected_revision,
             "current_revision": self.current_revision,
             "drift": [asdict(item) | {"message": item.message()} for item in self.drift],
+            "error": self.error,
         }
 
 
-async def get_runtime_schema_report() -> RuntimeSchemaReport:
+async def get_runtime_schema_report(use_cache: bool = True) -> RuntimeSchemaReport:
+    global _cached_schema_report
     if settings.environment == "test":
         return RuntimeSchemaReport("skipped", None, EXPECTED_ALEMBIC_HEAD, None, [])
+
+    now = time.monotonic()
+    if use_cache and _cached_schema_report is not None:
+        cached_at, cached_report = _cached_schema_report
+        if now - cached_at < SCHEMA_REPORT_CACHE_SECONDS:
+            return cached_report
+
+    try:
+        report = await _inspect_runtime_schema()
+    except SQLAlchemyError as exc:
+        logger.exception("runtime_schema_validation_failed", error=str(exc))
+        report = RuntimeSchemaReport(
+            status="validation_error",
+            dialect=None,
+            expected_revision=EXPECTED_ALEMBIC_HEAD,
+            current_revision=None,
+            drift=[],
+            error=str(exc),
+        )
+
+    _cached_schema_report = (now, report)
+    if report.drift:
+        logger.warning(
+            "runtime_schema_drift_detected",
+            current_revision=report.current_revision,
+            expected_revision=report.expected_revision,
+            drift=[item.message() for item in report.drift],
+        )
+    elif report.error:
+        logger.warning("runtime_schema_unhealthy", error=report.error)
+    return report
+
+
+async def _inspect_runtime_schema() -> RuntimeSchemaReport:
     async with engine.connect() as connection:
         if connection.dialect.name != "postgresql":
             return RuntimeSchemaReport(
@@ -115,6 +158,8 @@ async def get_runtime_schema_report() -> RuntimeSchemaReport:
                 ).all()
             }
             missing_columns = sorted(expected_columns - existing_columns)
+            if not existing_columns:
+                drift.append(SchemaDrift(table, "missing table", "table is absent from public schema"))
             if missing_columns:
                 drift.append(
                     SchemaDrift(table, "missing columns", ", ".join(missing_columns))
@@ -157,8 +202,10 @@ async def get_runtime_schema_report() -> RuntimeSchemaReport:
 
 
 async def validate_runtime_schema(strict: bool | None = None) -> RuntimeSchemaReport:
-    report = await get_runtime_schema_report()
+    report = await get_runtime_schema_report(use_cache=False)
     if report.drift and (settings.runtime_schema_strict if strict is None else strict):
         details = "; ".join(item.message() for item in report.drift)
         raise RuntimeError(f"Runtime PostgreSQL schema drift detected: {details}")
+    if report.error and (settings.runtime_schema_strict if strict is None else strict):
+        raise RuntimeError(f"Runtime PostgreSQL schema validation failed: {report.error}")
     return report

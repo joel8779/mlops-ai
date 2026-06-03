@@ -57,13 +57,13 @@ class SemanticSearchService:
         candidate_ids = list(aggregated.keys())[payload.offset : payload.offset + payload.limit]
         results: list[CandidateSearchResult] = []
         for candidate_id in candidate_ids:
-            candidate = await repository.get_for_owner(candidate_id, organization_id, owner_id)
+            candidate = await repository.get_for_org(candidate_id, organization_id)
             if candidate is None:
                 continue
             if payload.location and payload.location.lower() not in str(candidate.location or "").lower():
                 continue
-            resume = await repository.latest_resume(candidate.id, organization_id, owner_id)
-            skills = await repository.skills_for_candidate(candidate.id, organization_id, owner_id)
+            resume = await repository.latest_resume(candidate.id, organization_id)
+            skills = await repository.skills_for_candidate(candidate.id, organization_id)
             match = await self._job_match(organization_id, owner_id, candidate.id, payload.job_description_id)
             ats_score = await self._ats_score(organization_id, owner_id, candidate.id, payload.job_description_id)
             matched_skills = match.matched_skills if match else self._matched_query_skills(payload.query, skills)
@@ -97,13 +97,12 @@ class SemanticSearchService:
         existing = await self.db.scalar(
             select(CandidateMatch.id).where(
                 CandidateMatch.organization_id == organization_id,
-                CandidateMatch.owner_id == owner_id,
                 CandidateMatch.job_description_id == job_id,
             ).limit(1)
         )
         if existing is not None:
             return
-        job = await JobDescriptionRepository(self.db).get_for_owner(job_id, organization_id, owner_id)
+        job = await JobDescriptionRepository(self.db).get_for_org(job_id, organization_id)
         if job is not None:
             await MatchingService(self.db).rank_candidates(organization_id, owner_id, job, limit=100)
 
@@ -114,12 +113,12 @@ class SemanticSearchService:
         owner_id: UUID,
         payload: SemanticSearchRequest,
     ) -> dict[UUID, dict[str, Any]]:
-        candidates = await repository.list_for_owner(organization_id, owner_id, limit=min(payload.limit * 5 + payload.offset, 100))
+        candidates = await repository.list_for_org(organization_id, limit=min(payload.limit * 5 + payload.offset, 100))
         terms = {term.lower() for term in payload.query.split() if len(term) > 2}
         fallback: dict[UUID, dict[str, Any]] = {}
         for candidate in candidates:
-            resume = await repository.latest_resume(candidate.id, organization_id, owner_id)
-            skills = await repository.skills_for_candidate(candidate.id, organization_id, owner_id)
+            resume = await repository.latest_resume(candidate.id, organization_id)
+            skills = await repository.skills_for_candidate(candidate.id, organization_id)
             text = " ".join(
                 [
                     candidate.full_name or "",
@@ -208,7 +207,6 @@ class SemanticSearchService:
             select(CandidateMatch)
             .where(
                 CandidateMatch.organization_id == organization_id,
-                CandidateMatch.owner_id == owner_id,
                 CandidateMatch.candidate_id == candidate_id,
                 CandidateMatch.job_description_id == job_id,
             )
@@ -223,7 +221,6 @@ class SemanticSearchService:
             select(ATSScore.ats_score)
             .where(
                 ATSScore.organization_id == organization_id,
-                ATSScore.owner_id == owner_id,
                 ATSScore.candidate_id == candidate_id,
                 ATSScore.job_description_id == job_id,
             )

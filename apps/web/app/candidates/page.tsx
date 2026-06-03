@@ -166,7 +166,7 @@ export default function CandidatesPage() {
               <div key={candidateId} className="grid gap-4 border-b border-white/10 px-5 py-4 last:border-b-0 lg:grid-cols-[minmax(180px,1.4fr)_minmax(120px,1fr)_120px_120px] lg:items-start">
                 <div className="min-w-0">
                     <Link href={`/candidates/${candidateId}`} className="text-lg font-semibold hover:text-accent">
-                      {candidate.full_name || candidate.email || "Candidate Profile"}
+                      {candidate.full_name || candidate.email || "Unnamed candidate"}
                     </Link>
                     <p className="mt-1 text-sm text-foreground-muted">{candidate.headline || candidate.location || "Profile details pending extraction"}</p>
                   </div>
@@ -176,7 +176,7 @@ export default function CandidatesPage() {
                         {skill}
                       </span>
                     ))}
-                    {visibleSkills.length === 0 && <span className="text-sm text-foreground-muted">No skills extracted yet</span>}
+                    {visibleSkills.length === 0 && <span className="text-sm text-foreground-muted">Skills unavailable</span>}
                   </div>
                   <div className="text-sm text-foreground-muted">{candidate.current_stage || candidate.latest_resume_status || (candidate.latest_resume_id ? "Resume linked" : "No resume")}</div>
                   <div className="flex flex-col gap-2">

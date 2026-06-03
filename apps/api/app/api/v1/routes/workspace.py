@@ -275,6 +275,7 @@ async def _count(db: AsyncSession, auth: AuthContext, model) -> int:
         select(func.count()).select_from(model).where(
             model.organization_id == auth.organization_id,
             model.owner_id == auth.user_id,
+            model.deleted_at.is_(None),
         )
     )
     return int(value or 0)
@@ -286,6 +287,7 @@ async def _count_status(db: AsyncSession, auth: AuthContext, status: ResumeStatu
             Resume.organization_id == auth.organization_id,
             Resume.owner_id == auth.user_id,
             Resume.status == status,
+            Resume.deleted_at.is_(None),
         )
     )
     return int(value or 0)

@@ -25,7 +25,10 @@ class AnalyticsService:
         total_actions = await self.db.scalar(
             select(func.count())
             .select_from(RecruiterActivity)
-            .where(RecruiterActivity.organization_id == auth.organization_id, RecruiterActivity.owner_id == auth.user_id)
+            .where(
+                RecruiterActivity.organization_id == auth.organization_id,
+                RecruiterActivity.deleted_at.is_(None),
+            )
         )
         return {
             "hiring_funnel": await self.hiring_funnel(auth),
@@ -37,7 +40,7 @@ class AnalyticsService:
             "shortlist_counts": await self.shortlist_counts(auth),
             "resume_processing_counts": await self.resume_processing_counts(auth),
             "semantic_match_averages": await self.semantic_match_averages(auth),
-            "pipeline_stage_counts": await self.hiring_funnel(auth),
+            "pipeline_stage_counts": await self.pipeline_stage_counts(auth),
             "total_candidates": await self._count(auth, Candidate),
             "total_jobs": await self._count(auth, JobDescription),
             "total_actions": int(total_actions or 0),
@@ -45,17 +48,48 @@ class AnalyticsService:
         }
 
     async def hiring_funnel(self, auth: AuthContext) -> dict[str, int]:
+        return await self._current_pipeline_stage_counts(auth)
+
+    async def pipeline_stage_counts(self, auth: AuthContext) -> dict[str, int]:
+        return await self._current_pipeline_stage_counts(auth)
+
+    async def _current_pipeline_stage_counts(self, auth: AuthContext) -> dict[str, int]:
+        latest_stage = (
+            select(
+                CandidatePipelineStage.candidate_id,
+                CandidatePipelineStage.stage,
+                func.row_number()
+                .over(
+                    partition_by=CandidatePipelineStage.candidate_id,
+                    order_by=CandidatePipelineStage.updated_at.desc(),
+                )
+                .label("rank"),
+            )
+            .join(Candidate, Candidate.id == CandidatePipelineStage.candidate_id)
+            .where(
+                CandidatePipelineStage.organization_id == auth.organization_id,
+                CandidatePipelineStage.deleted_at.is_(None),
+                Candidate.deleted_at.is_(None),
+            )
+            .subquery()
+        )
+
         result = await self.db.execute(
-            select(CandidatePipelineStage.stage, func.count())
-            .where(CandidatePipelineStage.organization_id == auth.organization_id, CandidatePipelineStage.owner_id == auth.user_id)
-            .group_by(CandidatePipelineStage.stage)
+            select(latest_stage.c.stage, func.count())
+            .where(latest_stage.c.rank == 1)
+            .group_by(latest_stage.c.stage)
         )
         return {stage.value.lower().replace(" ", "_"): count for stage, count in result.all()}
 
     async def top_skills(self, auth: AuthContext) -> list[dict]:
         result = await self.db.execute(
             select(CandidateSkill.normalized_skill, func.count())
-            .where(CandidateSkill.organization_id == auth.organization_id, CandidateSkill.owner_id == auth.user_id)
+            .join(Candidate, Candidate.id == CandidateSkill.candidate_id)
+            .where(
+                CandidateSkill.organization_id == auth.organization_id,
+                CandidateSkill.deleted_at.is_(None),
+                Candidate.deleted_at.is_(None),
+            )
             .group_by(CandidateSkill.normalized_skill)
             .order_by(func.count().desc())
             .limit(20)
@@ -66,13 +100,16 @@ class AnalyticsService:
         actions = await self.db.scalar(
             select(func.count()).select_from(RecruiterActivity).where(
                 RecruiterActivity.organization_id == auth.organization_id,
-                RecruiterActivity.owner_id == auth.user_id,
+                RecruiterActivity.deleted_at.is_(None),
             )
         )
         ranked_jobs = await self.db.scalar(
-            select(func.count(func.distinct(CandidateMatch.job_description_id))).where(
+            select(func.count(func.distinct(CandidateMatch.job_description_id)))
+            .join(Candidate, Candidate.id == CandidateMatch.candidate_id)
+            .where(
                 CandidateMatch.organization_id == auth.organization_id,
-                CandidateMatch.owner_id == auth.user_id,
+                CandidateMatch.deleted_at.is_(None),
+                Candidate.deleted_at.is_(None),
             )
         )
         total_jobs = await self._count(auth, JobDescription)
@@ -86,16 +123,22 @@ class AnalyticsService:
         positive = await self.db.scalar(
             select(func.count())
             .select_from(RankingFeedback)
+            .join(Candidate, Candidate.id == RankingFeedback.candidate_id)
             .where(
                 RankingFeedback.organization_id == auth.organization_id,
-                RankingFeedback.owner_id == auth.user_id,
                 RankingFeedback.action.in_([FeedbackAction.shortlist, FeedbackAction.interview, FeedbackAction.hire]),
+                RankingFeedback.deleted_at.is_(None),
+                Candidate.deleted_at.is_(None),
             )
         )
         total = await self.db.scalar(
-            select(func.count()).select_from(RankingFeedback).where(
+            select(func.count())
+            .select_from(RankingFeedback)
+            .join(Candidate, Candidate.id == RankingFeedback.candidate_id)
+            .where(
                 RankingFeedback.organization_id == auth.organization_id,
-                RankingFeedback.owner_id == auth.user_id,
+                RankingFeedback.deleted_at.is_(None),
+                Candidate.deleted_at.is_(None),
             )
         )
         return {"positive_feedback_rate": round((positive or 0) / max(total or 0, 1), 4)}
@@ -108,13 +151,20 @@ class AnalyticsService:
                 and_(
                     CandidateMatch.job_description_id == JobDescription.id,
                     CandidateMatch.organization_id == auth.organization_id,
-                    CandidateMatch.owner_id == auth.user_id,
+                    CandidateMatch.deleted_at.is_(None),
+                ),
+                isouter=True,
+            )
+            .join(
+                Candidate,
+                and_(
+                    Candidate.id == CandidateMatch.candidate_id,
+                    Candidate.deleted_at.is_(None),
                 ),
                 isouter=True,
             )
             .where(
                 JobDescription.organization_id == auth.organization_id,
-                JobDescription.owner_id == auth.user_id,
                 JobDescription.deleted_at.is_(None),
             )
             .group_by(JobDescription.id, JobDescription.title)
@@ -124,7 +174,13 @@ class AnalyticsService:
 
     async def ats_score_distribution(self, auth: AuthContext) -> dict[str, int]:
         scores = await self.db.scalars(
-            select(ATSScore.ats_score).where(ATSScore.organization_id == auth.organization_id, ATSScore.owner_id == auth.user_id)
+            select(ATSScore.ats_score)
+            .join(Candidate, Candidate.id == ATSScore.candidate_id)
+            .where(
+                ATSScore.organization_id == auth.organization_id,
+                ATSScore.deleted_at.is_(None),
+                Candidate.deleted_at.is_(None),
+            )
         )
         buckets = {"90_100": 0, "75_89": 0, "60_74": 0, "0_59": 0}
         for value in scores:
@@ -142,7 +198,12 @@ class AnalyticsService:
     async def shortlist_counts(self, auth: AuthContext) -> dict[str, int]:
         rows = await self.db.execute(
             select(RankingFeedback.action, func.count())
-            .where(RankingFeedback.organization_id == auth.organization_id, RankingFeedback.owner_id == auth.user_id)
+            .join(Candidate, Candidate.id == RankingFeedback.candidate_id)
+            .where(
+                RankingFeedback.organization_id == auth.organization_id,
+                RankingFeedback.deleted_at.is_(None),
+                Candidate.deleted_at.is_(None),
+            )
             .group_by(RankingFeedback.action)
         )
         return {action.value: int(count) for action, count in rows.all()}
@@ -150,7 +211,12 @@ class AnalyticsService:
     async def resume_processing_counts(self, auth: AuthContext) -> dict[str, int]:
         rows = await self.db.execute(
             select(Resume.status, func.count())
-            .where(Resume.organization_id == auth.organization_id, Resume.owner_id == auth.user_id, Resume.deleted_at.is_(None))
+            .join(Candidate, Candidate.id == Resume.candidate_id)
+            .where(
+                Resume.organization_id == auth.organization_id,
+                Resume.deleted_at.is_(None),
+                Candidate.deleted_at.is_(None),
+            )
             .group_by(Resume.status)
         )
         counts = {status.value: int(count) for status, count in rows.all()}
@@ -165,10 +231,13 @@ class AnalyticsService:
                 func.avg(CandidateMatch.overall_score),
             )
             .join(CandidateMatch, CandidateMatch.job_description_id == JobDescription.id)
+            .join(Candidate, Candidate.id == CandidateMatch.candidate_id)
             .where(
                 CandidateMatch.organization_id == auth.organization_id,
-                CandidateMatch.owner_id == auth.user_id,
-                JobDescription.owner_id == auth.user_id,
+                CandidateMatch.deleted_at.is_(None),
+                JobDescription.organization_id == auth.organization_id,
+                JobDescription.deleted_at.is_(None),
+                Candidate.deleted_at.is_(None),
             )
             .group_by(JobDescription.id, JobDescription.title)
             .order_by(func.avg(CandidateMatch.semantic_score).desc())
@@ -185,6 +254,9 @@ class AnalyticsService:
 
     async def _count(self, auth: AuthContext, model) -> int:
         value = await self.db.scalar(
-            select(func.count()).select_from(model).where(model.organization_id == auth.organization_id, model.owner_id == auth.user_id)
+            select(func.count()).select_from(model).where(
+                model.organization_id == auth.organization_id,
+                model.deleted_at.is_(None),
+            )
         )
         return int(value or 0)

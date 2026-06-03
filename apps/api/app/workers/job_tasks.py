@@ -32,3 +32,84 @@ async def _index_job(job_description_id: UUID) -> None:
                 }
                 await db.commit()
             raise
+
+
+@celery_app.task(name="workflow.send_shortlist_email", autoretry_for=(Exception,), retry_backoff=True)
+def send_shortlist_email_task(
+    stage_id: str,
+    to_email: str,
+    candidate_name: str,
+    job_title: str,
+    organization_name: str,
+    recruiter_email: str,
+) -> None:
+    asyncio.run(_send_shortlist_email_async(
+        UUID(stage_id),
+        to_email,
+        candidate_name,
+        job_title,
+        organization_name,
+        recruiter_email,
+    ))
+
+
+async def _send_shortlist_email_async(
+    stage_id: UUID,
+    to_email: str,
+    candidate_name: str,
+    job_title: str,
+    organization_name: str,
+    recruiter_email: str,
+) -> None:
+    from datetime import datetime, timezone
+    from app.services.email_service import EmailService
+    from app.models.domain import CandidatePipelineStage
+
+    email_service = EmailService()
+    report = email_service.health_report()
+    if not report["configured"]:
+        async with AsyncSessionLocal() as db:
+            stage = await db.get(CandidatePipelineStage, stage_id)
+            if stage:
+                stage.metadata_json = {
+                    **(stage.metadata_json or {}),
+                    "email_delivery": {
+                        "status": "skipped",
+                        "reason": report["reason"],
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }
+                }
+                await db.commit()
+        return
+
+    try:
+        await email_service.send_shortlist_email_async(
+            to_email=to_email,
+            candidate_name=candidate_name,
+            job_title=job_title,
+            organization_name=organization_name,
+            recruiter_email=recruiter_email,
+        )
+        status = "sent"
+        error_msg = None
+    except Exception as exc:
+        status = "failed"
+        error_msg = str(exc)
+
+    async with AsyncSessionLocal() as db:
+        stage = await db.get(CandidatePipelineStage, stage_id)
+        if stage:
+            stage.metadata_json = {
+                **(stage.metadata_json or {}),
+                "email_delivery": {
+                    "status": status,
+                    "error": error_msg,
+                    "recipient": to_email,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            }
+            await db.commit()
+
+    if status == "failed":
+        raise RuntimeError(f"Failed to send shortlist email: {error_msg}")
+

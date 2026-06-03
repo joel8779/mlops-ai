@@ -6,10 +6,13 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.logging import get_logger
 from app.models.domain import Candidate, CandidateMatch, CandidatePipelineStage, JobDescription, PipelineStage, Resume
 from app.repositories.candidates import CandidateRepository
 from app.schemas.matching import CandidateMatchRead, MatchingWeights
 from app.services.embedding_service import EmbeddingService
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -45,18 +48,25 @@ class MatchingService:
         )
         try:
             semantic_hits = EmbeddingService().semantic_search(organization_id, owner_id, job.description, limit=limit * 3)
-        except Exception:
+        except Exception as exc:
+            logger.exception(
+                "semantic_search_failed",
+                organization_id=str(organization_id),
+                owner_id=str(owner_id),
+                job_id=str(job.id),
+                error=str(exc),
+            )
             semantic_hits = []
         semantic_by_candidate = {
             UUID(hit["payload"]["candidate_id"]): min(100.0, max(0.0, hit["score"] * 100))
             for hit in semantic_hits
             if hit.get("payload", {}).get("candidate_id")
         }
-        candidates = await self.candidates.list_for_owner(organization_id, owner_id, limit=limit * 3)
+        candidates = await self.candidates.list_for_org(organization_id, limit=limit * 3)
         scored: list[CandidateMatchRead] = []
         for candidate in candidates:
-            resume = await self.candidates.latest_resume(candidate.id, organization_id, owner_id)
-            skills = await self.candidates.skills_for_candidate(candidate.id, organization_id, owner_id)
+            resume = await self.candidates.latest_resume(candidate.id, organization_id)
+            skills = await self.candidates.skills_for_candidate(candidate.id, organization_id)
             evidence = CandidateEvidence(
                 candidate=candidate,
                 resume=resume,
@@ -111,7 +121,6 @@ class MatchingService:
         await self.db.execute(
             delete(CandidateMatch).where(
                 CandidateMatch.organization_id == organization_id,
-                CandidateMatch.owner_id == owner_id,
                 CandidateMatch.job_description_id == job_id,
             )
         )
@@ -137,7 +146,6 @@ class MatchingService:
             current_stage = await self.db.scalar(
                 select(CandidatePipelineStage).where(
                     CandidatePipelineStage.organization_id == organization_id,
-                    CandidatePipelineStage.owner_id == owner_id,
                     CandidatePipelineStage.candidate_id == match.candidate_id,
                     CandidatePipelineStage.job_description_id == job_id,
                     CandidatePipelineStage.deleted_at.is_(None),

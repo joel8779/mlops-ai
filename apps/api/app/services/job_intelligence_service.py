@@ -1,5 +1,6 @@
 import re
 from collections import Counter
+from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, UploadFile, status
@@ -39,13 +40,15 @@ class JobIntelligenceService:
         payload: JobDescriptionCreate,
         source: str = "raw_text",
     ) -> JobDescription:
+        if not payload.title or not payload.title.strip():
+            raise AppError("Job title is required. Please provide a title for the job description.")
         parsed = self.parse(payload.description)
         semantic_requirements = self.semantic_requirements(payload.description, parsed)
         job = JobDescription(
             organization_id=auth.organization_id,
             owner_id=auth.user_id,
             created_by_user_id=auth.user_id,
-            title=payload.title,
+            title=payload.title.strip(),
             description=payload.description,
             status=payload.status,
             role_category=parsed.role_category,
@@ -98,6 +101,8 @@ class JobIntelligenceService:
 
     async def create_from_upload(self, auth: AuthContext, title: str | None, upload: UploadFile) -> JobDescription:
         preview = await self.preview_upload(upload, title)
+        if not preview.title:
+            raise AppError("Could not extract a job title from the uploaded file. Please provide a title manually.")
         return await self.create_from_text(
             auth,
             JobDescriptionCreate(title=preview.title, description=preview.description),
@@ -128,7 +133,21 @@ class JobIntelligenceService:
                 },
             )
         parsed = self.parse(parsed_doc.text)
-        inferred_title = title.strip() if title and title.strip() else self.infer_title(parsed_doc.text, parsed_doc.metadata)
+        extraction_metadata = {
+            **parsed_doc.metadata,
+            "filename": upload.filename,
+            "technologies": parsed.technologies,
+            "seniority": parsed.seniority,
+            "summary": parsed.summary,
+            "preferred_skills": parsed.preferred_skills,
+        }
+        structured = await self._structured_extract(parsed_doc.text, extraction_metadata)
+        inferred_title = title.strip() if title and title.strip() else None
+        inferred_title = inferred_title or (structured or {}).get("title")
+        if inferred_title and not self._looks_like_title(str(inferred_title)):
+            inferred_title = None
+        if not inferred_title:
+            inferred_title = self.infer_title(parsed_doc.text, extraction_metadata)
         return JobExtractionPreview(
             title=inferred_title,
             description=parsed_doc.text,
@@ -141,13 +160,10 @@ class JobIntelligenceService:
             keywords=parsed.keywords,
             semantic_requirements=self.semantic_requirements(parsed_doc.text, parsed),
             extraction_metadata={
-                **parsed_doc.metadata,
-                "technologies": parsed.technologies,
-                "seniority": parsed.seniority,
-                "summary": parsed.summary,
-                "preferred_skills": parsed.preferred_skills,
+                **extraction_metadata,
+                "structured_extraction": structured,
             },
-            warnings=[] if inferred_title != "Untitled Role" else ["Could not confidently infer a job title."],
+            warnings=[] if inferred_title else ["Could not confidently infer a job title."],
         )
 
     async def index_job(self, job_id: UUID) -> None:
@@ -191,10 +207,12 @@ class JobIntelligenceService:
         await self.db.commit()
 
     def parse(self, text: str) -> JobParseResult:
-        normalized = text.lower()
+        # Preprocess text to remove noise
+        cleaned_text = self._preprocess_jd(text)
+        normalized = cleaned_text.lower()
         skills = sorted({skill for skill in SKILL_TERMS if skill in normalized})
-        preferred_skills = self._skills_near(text, ["preferred", "nice to have", "bonus", "plus"])
-        required_skills = self._skills_near(text, ["required", "must", "requirements", "need", "responsibilities"]) or skills
+        preferred_skills = self._skills_near(cleaned_text, ["preferred", "nice to have", "bonus", "plus"])
+        required_skills = self._skills_near(cleaned_text, ["required", "must", "requirements", "need", "responsibilities"]) or skills
         years = [int(match) for match in re.findall(r"(\d+)\+?\s*(?:years|yrs)", normalized)]
         education = sorted({term for term in EDUCATION_TERMS if term in normalized})
         tokens = re.findall(r"[a-zA-Z][a-zA-Z0-9\.\+#-]{2,}", normalized)
@@ -211,32 +229,131 @@ class JobIntelligenceService:
             keywords=keywords,
             role_category=role_category,
             seniority=seniority,
-            summary=self._summary(text, required_skills, seniority),
+            summary=self._summary(cleaned_text, required_skills, seniority),
         )
 
-    def infer_title(self, text: str, metadata: dict | None = None) -> str:
+    async def _structured_extract(self, text: str, metadata: dict | None = None) -> dict[str, Any] | None:
+        try:
+            from app.services.llm_provider import get_llm_provider
+
+            provider = get_llm_provider()
+            if not hasattr(provider, "complete_structured"):
+                return None
+            schema = {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "role_category": {"type": "string"},
+                    "years_experience_min": {"type": "integer"},
+                    "years_experience_max": {"type": "integer"},
+                    "skills": {"type": "array", "items": {"type": "string"}},
+                    "preferred_skills": {"type": "array", "items": {"type": "string"}},
+                    "education_requirements": {"type": "array", "items": {"type": "string"}},
+                    "seniority": {"type": "string"},
+                },
+            }
+            result = await provider.complete_structured(
+                prompt=(
+                    "Extract structured job description intelligence from the text below. "
+                    "Return only JSON that matches the requested schema.\n\n"
+                    f"{text[:12000]}"
+                ),
+                schema=schema,
+                system=(
+                    "You are extracting recruiting intelligence from a job description. "
+                    "Use null or empty arrays when evidence is absent."
+                ),
+                feature="job_description_structured_extraction",
+            )
+            structured = result.structured_data if getattr(result, "structured_data", None) else None
+            if isinstance(structured, dict):
+                return structured
+        except Exception:
+            return None
+        return None
+
+    def infer_title(self, text: str, metadata: dict | None = None) -> str | None:
         metadata = metadata or {}
+        cleaned_text = self._preprocess_jd(text)
+        lines = [line.strip(" -:\t") for line in cleaned_text.splitlines() if line.strip()]
+
+        # 1. Semantic role-title extraction: prefer explicit role signals.
+        role_terms = (
+            "engineer", "developer", "architect", "manager", "director", "analyst", "scientist",
+            "consultant", "specialist", "designer", "administrator", "lead", "intern",
+        )
+        semantic_patterns = [
+            r"(?i)\b(?:job\s*title|position|role|opening)\s*[:\-]\s*([A-Za-z][A-Za-z0-9 /\-+.#&]{2,80})",
+            r"(?i)\b(?:we are hiring|we're hiring|hiring|seeking|looking for)\s+(?:an?\s+)?([A-Za-z][A-Za-z0-9 /\-+.#&]{2,80})",
+        ]
+        for pattern in semantic_patterns:
+            match = re.search(pattern, cleaned_text[:2500])
+            if match:
+                candidate = self._clean_title(match.group(1))
+                if self._looks_like_title(candidate) and any(term in candidate.lower() for term in role_terms):
+                    return candidate[:255]
+
+        # 2. Recruiter keyword detection in early lines.
+        for line in lines[:30]:
+            candidate = self._clean_title(line)
+            if any(term in candidate.lower() for term in role_terms) and self._looks_like_title(candidate):
+                return candidate[:255]
+
+        # 3. Clean document metadata and heading parsing.
         for key in ["title", "Title", "subject", "Subject"]:
-            value = str(metadata.get(key) or "").strip()
+            value = self._clean_title(str(metadata.get(key) or ""))
             if self._looks_like_title(value):
                 return value[:255]
-        lines = [line.strip(" -:\t") for line in text.splitlines() if line.strip()]
+
         title_patterns = [
-            r"(?i)(?:job\s*title|position|role)\s*[:\-]\s*(.+)",
-            r"(?i)(.+?)\s+(?:job description|role description)$",
+            r"(?i)^job\s*title\s*[:\-]\s*(.+)$",
+            r"(?i)^position\s*[:\-]\s*(.+)$",
+            r"(?i)^role\s*[:\-]\s*(.+)$",
+            r"(?i)^title\s*[:\-]\s*(.+)$",
+            r"(?i)^(.+?)\s+(?:job description|role description|job spec|position description)$",
         ]
-        for line in lines[:20]:
+        for line in lines[:30]:
             for pattern in title_patterns:
                 match = re.search(pattern, line)
-                if match and self._looks_like_title(match.group(1)):
-                    return match.group(1).strip()[:255]
-        for line in lines[:10]:
-            if self._looks_like_title(line):
-                return line[:255]
-        category = self._category(text.lower())
-        if category:
-            return category.replace("_", " ").title()
-        return "Untitled Role"
+                if match:
+                    candidate = self._clean_title(match.group(1))
+                    if self._looks_like_title(candidate):
+                        return candidate[:255]
+
+        for line in lines[:15]:
+            candidate = self._clean_title(line)
+            if self._looks_like_title(candidate):
+                return candidate[:255]
+
+        # 4. Filename cleanup inference.
+        filename = str(metadata.get("filename", "")).strip()
+        if filename:
+            clean_name = re.sub(r"\.(pdf|docx|doc|txt)$", "", filename, flags=re.IGNORECASE)
+            clean_name = re.sub(
+                r"(?i)\b(job|description|jd|position|role|posting|resume|cv|document|file|profile|untitled|assessment|instructions)\b",
+                "",
+                clean_name,
+            )
+            clean_name = self._clean_title(clean_name.replace("_", " ").replace("-", " "))
+            normalized_clean = clean_name.lower()
+            if self._looks_like_title(clean_name) and normalized_clean not in {"document", "file", "profile", "resume", "cv", "untitled"}:
+                return clean_name[:255]
+
+        # 5. Final fallback scanning top 5 non-empty lines of raw, original text input.
+        raw_lines = [line.strip() for line in text.splitlines() if line.strip()]
+        for line in raw_lines[:5]:
+            candidate = self._clean_title(line)
+            if self._looks_like_title(candidate):
+                return candidate[:255]
+
+        # 6. Manual recruiter confirmation required.
+        return None
+
+    @staticmethod
+    def _clean_title(value: str) -> str:
+        value = re.sub(r"\s+", " ", value).strip(" -_:|")
+        value = re.sub(r"(?i)\b(job description|role description|position description)\b", "", value).strip(" -_:|")
+        return value
 
     @staticmethod
     def semantic_requirements(text: str, parsed: JobParseResult) -> list[str]:
@@ -299,8 +416,28 @@ class JobIntelligenceService:
     def _looks_like_title(value: str) -> bool:
         if not value or len(value) < 3 or len(value) > 120:
             return False
-        blocked = {"job description", "about us", "requirements", "responsibilities", "qualifications"}
-        if value.lower() in blocked:
+        normalized = re.sub(r"\s+", " ", value.lower()).strip(" -_:")
+        blocked = {
+            "job description",
+            "about us",
+            "requirements",
+            "responsibilities",
+            "qualifications",
+            "document heading comes here",
+            "assessment instructions",
+            "no title",
+            "untitled",
+            "document",
+            "file",
+            "assessment",
+            "instructions",
+            "job",
+            "role",
+            "position",
+        }
+        if normalized in blocked:
+            return False
+        if any(term in normalized for term in ["comes here", "lorem ipsum", "placeholder", "assessment instructions"]):
             return False
         if value.endswith("."):
             return False
@@ -318,3 +455,70 @@ class JobIntelligenceService:
         if any(term in text for term in ["devops", "platform", "kubernetes"]):
             return "platform_engineering"
         return None
+
+    @staticmethod
+    def _preprocess_jd(text: str) -> str:
+        """Remove noise from JD text before parsing and embedding."""
+        lines = text.splitlines()
+        cleaned_lines = []
+        skip_section = False
+        skip_patterns = [
+            r"(?i)^(copyright|©|all rights reserved)",
+            r"(?i)^(disclaimer|confidential|proprietary)",
+            r"(?i)^(troubleshooting|support|help|faq)",
+            r"(?i)^(instructions|guidance|guidelines)",
+            r"(?i)^(do not|don't|please note)",
+            r"(?i)^(assessment instructions|assessment logistics|test instructions|assessment timeline|candidate instructions)",
+            r"(?i)^(screening|interview|round|take-home|take home|coding challenge|quiz|exam)",
+            r"(?i)^(contact us|support contact|email us)",
+            r"(?i)^(browser requirements|system requirements)",
+            r"(?i)^(malpractice|legal|terms of service)",
+            r"(?i)^(please upload|upload your|submit your|complete the)",
+        ]
+        keep_patterns = [
+            r"(?i)(job|role|position|title)",
+            r"(?i)(responsibilities|duties|what you'll do)",
+            r"(?i)(requirements|qualifications|what we're looking for)",
+            r"(?i)(skills|technologies|stack)",
+            r"(?i)(experience|years)",
+            r"(?i)(education|degree)",
+            r"(?i)(benefits|perks)",
+        ]
+        
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            
+            # Check if we should skip this section
+            if any(re.match(pattern, stripped) for pattern in skip_patterns):
+                skip_section = True
+                continue
+            
+            # Check if we should keep this line
+            if skip_section:
+                # Exit skip section if we hit a keep pattern
+                if any(re.search(pattern, stripped) for pattern in keep_patterns):
+                    skip_section = False
+                    cleaned_lines.append(stripped)
+                continue
+            
+            # Remove repeated boilerplate
+            if len(stripped) < 10:
+                continue
+            
+            # Remove lines that are mostly boilerplate
+            if stripped.count(" ") > len(stripped) * 0.8:
+                continue
+            
+            cleaned_lines.append(stripped)
+        
+        # Remove duplicate lines
+        seen = set()
+        unique_lines = []
+        for line in cleaned_lines:
+            if line.lower() not in seen:
+                seen.add(line.lower())
+                unique_lines.append(line)
+        
+        return "\n".join(unique_lines)

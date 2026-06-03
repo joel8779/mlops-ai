@@ -112,7 +112,7 @@ export default function SearchPage() {
                           <BrainCircuit className="h-5 w-5" />
                         </div>
                         <div>
-                          <h2 className="font-semibold">{result.full_name || "Candidate Profile"}</h2>
+                          <h2 className="font-semibold">{result.full_name || "Unnamed candidate"}</h2>
                           <p className="text-xs uppercase tracking-[0.18em] text-foreground-subtle">{result.headline || result.location || "candidate match"}</p>
                         </div>
                       </div>
@@ -133,7 +133,7 @@ export default function SearchPage() {
                         </div>
                         <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
                           <div className="text-xs text-foreground-subtle">Skills relationship</div>
-                          <div className="mt-2 truncate text-sm">{(result.matched_skills || []).slice(0, 3).join(", ") || "No matched skills"}</div>
+                          <div className="mt-2 truncate text-sm">{(result.matched_skills || []).slice(0, 3).join(", ") || "Matched skills unavailable"}</div>
                         </div>
                       </div>
                       <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.03] p-3 text-sm leading-6 text-foreground-muted">

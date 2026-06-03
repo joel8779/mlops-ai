@@ -1,7 +1,7 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AuthProvider } from "@/lib/auth-context";
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -15,6 +15,15 @@ export function Providers({ children }: { children: React.ReactNode }) {
       },
     },
   }));
+
+  useEffect(() => {
+    const clearAuthState = () => {
+      queryClient.clear();
+    };
+    window.addEventListener("auth:cleared", clearAuthState);
+    return () => window.removeEventListener("auth:cleared", clearAuthState);
+  }, [queryClient]);
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>{children}</AuthProvider>

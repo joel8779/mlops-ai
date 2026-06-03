@@ -3,10 +3,17 @@ from pathlib import Path
 
 from app.core.paths import get_repo_root_cached
 from prometheus_client import REGISTRY
+from app.observability import metrics
+
 
 
 def test_required_aiops_metrics_are_registered():
-    names = {sample.name for metric in REGISTRY.collect() for sample in metric.samples}
+    from app.observability import metrics
+    names = set()
+    for metric in REGISTRY.collect():
+        names.add(metric.name)
+        for sample in metric.samples:
+            names.add(sample.name)
 
     assert any(name.startswith("llm_request_latency_ms") for name in names)
     assert any(name.startswith("retrieval_topk_latency_ms") for name in names)

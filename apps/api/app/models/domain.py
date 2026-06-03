@@ -25,7 +25,17 @@ class JobStatus(StrEnum):
 
 
 class PipelineStage(StrEnum):
+    # Ingestion stages
     uploaded = "uploaded"
+    queued = "queued"
+    parsing = "parsing"
+    parsed = "parsed"
+    embedding = "embedding"
+    summarizing = "summarizing"
+    indexed = "indexed"
+    completed = "completed"
+    failed = "failed"
+    # Recruiting workflow stages
     ranked = "ranked"
     shortlisted = "shortlisted"
     interviewing = "interviewing"
@@ -52,6 +62,7 @@ class Organization(TimestampedUUIDModel):
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     slug: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     external_id: Mapped[str | None] = mapped_column(String(255), unique=True)
+    organization_pin: Mapped[str | None] = mapped_column(String(255))
 
     users: Mapped[list["User"]] = relationship(back_populates="organization")
     candidates: Mapped[list["Candidate"]] = relationship(back_populates="organization")
@@ -66,6 +77,9 @@ class User(TimestampedUUIDModel):
     full_name: Mapped[str | None] = mapped_column(String(255))
     roles: Mapped[list[str]] = mapped_column(JSONB, default=list)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    otp_code: Mapped[str | None] = mapped_column(String(6), index=True)
+    otp_expiry: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True))
+    otp_verified: Mapped[bool] = mapped_column(Boolean, default=False)
 
     organization: Mapped[Organization] = relationship(back_populates="users")
     resumes_uploaded: Mapped[list["Resume"]] = relationship(foreign_keys="[Resume.uploaded_by_user_id]", back_populates="uploaded_by")

@@ -55,25 +55,40 @@ Always be:
 - Clear and concise
 - Focused on helping the recruiter succeed
 
-If you're unsure about something, acknowledge it rather than making assumptions.""",
+Do not invent facts, years of experience, seniority, skills, scores, rankings, employers, or credentials. If evidence is absent, say it is not available.""",
             variables=[],
             description="System prompt for recruiter AI assistant",
             model_type="reasoning",
         ),
         PromptTemplate.CANDIDATE_SUMMARY: Prompt(
-            template="""Based on the following candidate information, provide a concise summary highlighting:
+            template="""Write a clean, recruiter-ready and concise recruiter briefing card in plain text.
 
-1. Key strengths and qualifications
-2. Relevant experience
-3. Notable skills
-4. Potential fit considerations
+Maximum length: 250 words.
+
+Use exactly these section headings:
+Candidate Overview
+Technical Strengths
+Relevant Experience
+Hiring Concerns
+Recommended Fit
+Interview Focus Areas
+
+Rules:
+- Use only evidence from the supplied profile and resume excerpt.
+- Do not invent facts, years, seniority, skills, employers, credentials, ATS scores, or role fit certainty.
+- Do not repeat resume lines verbatim.
+- Candidate Overview must be 2-3 short sentences.
+- Other sections must use concise bullets beginning with "- ".
+- Group related technologies where useful.
+- Mention fresher, student status, missing internships, or gaps only when the evidence supports it.
+- If evidence is missing, write "- Not available" for that section.
+- Do not use markdown tables, bold markers, numbered lists, or giant paragraphs.
+- Keep language direct, recruiter-readable, and hiring-focused.
 
 Candidate Information:
-{context}
-
-Provide a 2-3 paragraph summary that helps the recruiter quickly understand the candidate's profile.""",
+{context}""",
             variables=["context"],
-            description="Generate candidate summary",
+            description="Generate concise recruiter summary",
             model_type="reasoning",
         ),
         PromptTemplate.INTERVIEW_QUESTIONS: Prompt(
@@ -111,7 +126,7 @@ Provide a structured comparison covering:
 4. Best fit recommendation
 5. Specific follow-up questions for each candidate
 
-Be objective and data-driven in your analysis.""",
+Be objective and data-driven. Do not create new scores, years, seniority, skills, or facts that are absent from the supplied profiles.""",
             variables=["job_context", "candidate_context"],
             description="Compare multiple candidates",
             model_type="reasoning",
@@ -134,7 +149,9 @@ Provide:
 2. Key factors contributing to the score
 3. Areas where the candidate excels
 4. Areas for improvement
-5. Recommendations for the recruiter""",
+5. Recommendations for the recruiter
+
+Do not change or fabricate the ATS score. Explain only the provided score and breakdown.""",
             variables=["candidate_context", "job_context", "ats_score", "score_breakdown"],
             description="Explain ATS scoring",
             model_type="reasoning",
@@ -156,7 +173,9 @@ Provide:
 2. Key strengths that contributed to the score
 3. Any concerns or gaps
 4. How this candidate compares to top performers
-5. Recommended next steps""",
+5. Recommended next steps
+
+Do not fabricate ranking scores, skills, seniority, or experience. Use only provided ranking data.""",
             variables=["candidate_context", "job_context", "ranking_score", "ranking_position", "total_candidates"],
             description="Explain AI ranking",
             model_type="reasoning",
@@ -178,7 +197,8 @@ The email should be:
 - Professional yet engaging
 - Clear about the opportunity
 - Include a clear call to action
-- Under 200 words""",
+- Under 200 words
+- Do not invent candidate background, company claims, compensation, or job details""",
             variables=["candidate_context", "job_context", "tone", "key_points"],
             description="Generate outreach email",
             model_type="fast",
@@ -237,7 +257,7 @@ Extract skills into these categories:
 3. Domain Skills (industry-specific knowledge)
 4. Certifications
 
-Format as structured JSON.""",
+Format as structured JSON. Extract only skills explicitly present in the text; do not infer related skills.""",
             variables=["resume_text"],
             description="Extract skills from resume",
             model_type="fast",
@@ -260,7 +280,7 @@ Extract the following fields as JSON:
 - skills (list)
 - certifications (list)
 
-Use null for missing fields.""",
+Use null for missing fields. Do not infer years, seniority, skills, employers, or credentials that are not explicit.""",
             variables=["resume_text"],
             description="Parse resume into structured data",
             model_type="fast",

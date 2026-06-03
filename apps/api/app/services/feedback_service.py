@@ -1,14 +1,15 @@
 from uuid import UUID
 
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.domain import CandidatePipelineStage, FeedbackAction, PipelineStage, RankingFeedback, RecruiterActivity
+from app.models.domain import CandidatePipelineStage, FeedbackAction, Organization, PipelineStage, RankingFeedback, RecruiterActivity
 from app.repositories.candidates import CandidateRepository
 from app.repositories.jobs import JobDescriptionRepository
 from app.schemas.auth import AuthContext
 from app.schemas.feedback import RankingFeedbackCreate
+from app.services.email_service import EmailService
 
 ACTION_REWARDS = {
     "shortlist": 2.0,
@@ -30,18 +31,18 @@ class FeedbackService:
         self.db = db
 
     async def record(self, auth: AuthContext, payload: RankingFeedbackCreate) -> RankingFeedback:
-        candidate = await CandidateRepository(self.db).get_for_owner(payload.candidate_id, auth.organization_id, auth.user_id)
+        candidate = await CandidateRepository(self.db).get_for_org(payload.candidate_id, auth.organization_id)
         if candidate is None:
             raise HTTPException(status_code=404, detail="Candidate not found")
         job = None
         if payload.job_description_id is not None:
-            job = await JobDescriptionRepository(self.db).get_for_owner(payload.job_description_id, auth.organization_id, auth.user_id)
+            job = await JobDescriptionRepository(self.db).get_for_org(payload.job_description_id, auth.organization_id)
             if job is None:
                 raise HTTPException(status_code=404, detail="Job description not found")
         reward = ACTION_REWARDS[payload.action.value]
         feature_snapshot = dict(payload.feature_snapshot)
         if payload.action == FeedbackAction.shortlist and job is not None:
-            feature_snapshot["shortlist_email_draft"] = await self._shortlist_email_draft(candidate.full_name, job.title)
+            feature_snapshot["shortlist_email"] = await self._send_shortlist_email(auth, candidate, job)
         feedback = RankingFeedback(
             organization_id=auth.organization_id,
             owner_id=auth.user_id,
@@ -66,7 +67,7 @@ class FeedbackService:
                 payload={
                     "reward": reward,
                     "rank_position": payload.rank_position,
-                    "shortlist_email_draft": feature_snapshot.get("shortlist_email_draft"),
+                    "shortlist_email": feature_snapshot.get("shortlist_email"),
                 },
             )
         )
@@ -83,7 +84,6 @@ class FeedbackService:
         stage = await self.db.scalar(
             select(CandidatePipelineStage).where(
                 CandidatePipelineStage.organization_id == auth.organization_id,
-                CandidatePipelineStage.owner_id == auth.user_id,
                 CandidatePipelineStage.candidate_id == payload.candidate_id,
                 CandidatePipelineStage.job_description_id == payload.job_description_id,
                 CandidatePipelineStage.deleted_at.is_(None),
@@ -107,32 +107,22 @@ class FeedbackService:
         }
         self.db.add(stage)
 
-    async def _shortlist_email_draft(self, candidate_name: str | None, job_title: str) -> str:
-        name = candidate_name or "Candidate"
-        fallback = (
-            f"Subject: Interview invitation for {job_title}\n\n"
-            f"Hi {name},\n\n"
-            f"Thanks for your interest in the {job_title} role. Your background looks relevant, "
-            "and we would like to invite you to the next interview step.\n\n"
-            "Please share a few time windows that work for you this week.\n\n"
-            "Best,\nRecruiting Team"
-        )
+    async def _send_shortlist_email(self, auth: AuthContext, candidate, job) -> dict:
+        if not candidate.email:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot send shortlist email because candidate email is missing")
+        organization = await self.db.get(Organization, auth.organization_id)
+        if organization is None:
+            raise HTTPException(status_code=404, detail="Organization not found")
         try:
-            from app.services.llm.providers.gemini_provider import GenerationOptions
-            from app.services.llm_provider import get_llm_provider
-
-            provider = get_llm_provider()
-            result = await provider.complete(
-                (
-                    "Draft a concise recruiter-ready interview invitation email. "
-                    f"Candidate: {name}. Job title: {job_title}. Tone: warm, professional, direct."
-                ),
-                "You write recruiter outreach emails. Do not invent compensation, dates, or interviewers.",
-                GenerationOptions(temperature=0.3, max_output_tokens=450),
+            return await EmailService().send_shortlist_email_async(
+                to_email=candidate.email,
+                candidate_name=candidate.full_name or "Candidate",
+                job_title=job.title,
+                organization_name=organization.name,
+                recruiter_email=str(auth.email),
             )
-            return result.text.strip() or fallback
-        except Exception:
-            return fallback
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Shortlist email delivery failed: {exc}") from exc
 
     @staticmethod
     def active_learning_priority(score: float, feedback_count: int) -> float:

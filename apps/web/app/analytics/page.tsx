@@ -34,6 +34,7 @@ export default function AnalyticsPage() {
   ];
   const funnel = analytics?.hiring_funnel || {};
   const topSkills = analytics?.top_skills || [];
+  const pipelineStages = analytics?.pipeline_stage_counts || {};
   const candidatesPerJob = analytics?.candidates_per_job || [];
   const atsDistribution = analytics?.ats_score_distribution || {};
   const semanticAverages = analytics?.semantic_match_averages || [];
@@ -96,6 +97,21 @@ export default function AnalyticsPage() {
                       <div key={`${skill.skill || skill.name || index}`} className="flex items-center justify-between rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
                         <span>{skill.skill || skill.name || String(skill)}</span>
                         <span className="text-foreground-muted">{skill.count ?? ""}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+              <section className="ops-panel rounded-xl p-5">
+                <h2 className="text-base font-semibold">Pipeline stage distribution</h2>
+                <div className="mt-4 space-y-3">
+                  {Object.keys(pipelineStages).length === 0 ? (
+                    <p className="text-sm text-foreground-muted">No pipeline stage data yet.</p>
+                  ) : (
+                    Object.entries(pipelineStages).map(([stage, count]) => (
+                      <div key={stage} className="flex items-center justify-between rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
+                        <span className="capitalize">{stage.replace("_", " ")}</span>
+                        <span>{String(count)}</span>
                       </div>
                     ))
                   )}
