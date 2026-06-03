@@ -12,35 +12,33 @@ An enterprise-grade, multi-tenant Applicant Tracking System (ATS) and Resume Int
 
 ## 📸 Platform Previews
 
-### 🌐 Landing Page
-![Landing Hero](docs/screenshots/01_landing_hero.jpeg)
-*Modern dark-mode product landing page.*
-
-### 🛠️ Interactive Features & Product Preview
-| Core Features | Interactive Dashboard |
+### 🌐 Welcome & Workspace Onboarding
+| 01. Cyberpunk Landing Portal | 02. Tenant Signup & Onboarding |
 | --- | --- |
-| ![Landing Features](docs/screenshots/02_landing_features.jpeg) | ![Product Preview](docs/screenshots/03_landing_product.jpeg) |
+| ![Landing Hero](docs/screenshots/01_landing_hero.png) | ![Workspace Signup](docs/screenshots/02_signup.png) |
 
-### 🔐 User Onboarding & Authentication
-| Signup Page | Login Page |
+### 📊 Recruiter Operations Command Center
+| 03. Operations Command Dashboard | 04. Resume Ingestion & Parsing |
 | --- | --- |
-| ![Signup Page](docs/screenshots/06_signup.jpeg) | ![Login Page](docs/screenshots/05_login.jpeg) |
+| ![Command Dashboard](docs/screenshots/03_dashboard.png) | ![Resume Ingestion](docs/screenshots/04_documents_ingestion.png) |
 
-### 💼 Recruiter Workspace & Chat
-| Main Dashboard | Knowledge Base & Document Library |
+### 👤 Candidate Profile & AI Intelligence
+| 05. Recruiter Briefing & Profile | 06. AI Summary & Evaluation |
 | --- | --- |
-| ![Main Dashboard](docs/screenshots/07_dashboard.jpeg) | ![Documents Library](docs/screenshots/09_documents_library.jpeg) |
+| ![Candidate Profile](docs/screenshots/05_candidate_profile.png) | ![AI Summary](docs/screenshots/06_candidate_ai_summary.png) |
 
-| New Chat / Blank Slate | Active QA Chat Session |
+### 💼 Jobs Management & AI Semantic Search
+| 07. Role Command Deck (Jobs) | 08. Neural Search (Semantic Queries) |
 | --- | --- |
-| ![New Chat](docs/screenshots/08_new_chat.jpeg) | ![Active Chat Session](docs/screenshots/10_active_chat.jpeg) |
+| ![Jobs Command Deck](docs/screenshots/07_jobs_list.png) | ![Semantic Search Terminal](docs/screenshots/08_semantic_search.png) |
 
-### ⚙️ User Settings & Appearance
-| Profile Settings | Theme & Danger Zone |
+### ⚙️ Operational Telemetry & System Controls
+| 09. Analytics & Top Skills Telemetry | 10. Workspace & Session Settings |
 | --- | --- |
-| ![Settings Profile](docs/screenshots/11_settings_profile.jpeg) | ![Settings Theme](docs/screenshots/12_settings_theme.jpeg) |
+| ![Operational Telemetry](docs/screenshots/09_analytics.png) | ![Workspace Settings](docs/screenshots/10_settings.png) |
 
 ---
+
 
 ## 📖 Overview
 
