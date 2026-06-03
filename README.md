@@ -1,10 +1,11 @@
 # AI Resume Intelligence Platform
 
-[![Backend CI](https://img.shields.io/badge/backend--ci-green.svg)](.github/workflows/backend-ci.yml)
-[![Frontend CI](https://img.shields.io/badge/frontend--ci-green.svg)](.github/workflows/frontend-ci.yml)
-[![Security CI](https://img.shields.io/badge/security--ci-green.svg)](.github/workflows/security-ci.yml)
-[![Docker CI](https://img.shields.io/badge/docker--ci-green.svg)](.github/workflows/docker-ci.yml)
-[![MLOps](https://img.shields.io/badge/mlops-mlflow-blue.svg)](docs/ml-architecture.md)
+[![Build Status](https://github.com/joel8779/mlops-ai/actions/workflows/frontend-ci.yml/badge.svg)](https://github.com/joel8779/mlops-ai/actions/workflows/frontend-ci.yml)
+[![Test Status](https://github.com/joel8779/mlops-ai/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/joel8779/mlops-ai/actions/workflows/backend-ci.yml)
+[![Docker Build](https://github.com/joel8779/mlops-ai/actions/workflows/docker-ci.yml/badge.svg)](https://github.com/joel8779/mlops-ai/actions/workflows/docker-ci.yml)
+[![Last Commit](https://img.shields.io/github/last-commit/joel8779/mlops-ai)](https://github.com/joel8779/mlops-ai/commits/main)
+
+
 
 An enterprise-grade, multi-tenant Applicant Tracking System (ATS) and Resume Intelligence platform. Powered by hybrid semantic ranking, structured resume parsing, RAG-enabled recruitment assistance, and strict tenant isolation.
 
