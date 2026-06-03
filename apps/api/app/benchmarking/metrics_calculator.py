@@ -1,7 +1,7 @@
 """Metrics Calculator - Calculate evaluation metrics."""
 
 from dataclasses import dataclass
-from typing import Any, List
+from typing import List
 import numpy as np
 
 

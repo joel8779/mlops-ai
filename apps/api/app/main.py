@@ -32,6 +32,7 @@ from app.middleware.tenant import TenantContextMiddleware
 from app.observability.tracing import configure_tracing, shutdown_tracing
 from app.schemas.health import HealthResponse
 from app.services.email_service import EmailService
+import app.observability.metrics  # Ensure all prometheus metrics are registered at startup
 
 configure_logging()
 logger = get_logger(__name__)

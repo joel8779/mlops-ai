@@ -1,8 +1,7 @@
 """Hiring Forecaster - Predict hiring outcomes and trends."""
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 import numpy as np

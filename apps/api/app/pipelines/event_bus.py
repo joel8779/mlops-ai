@@ -3,9 +3,9 @@
 import asyncio
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 from uuid import UUID
 
 from app.core.redis import get_redis_client
@@ -91,7 +91,7 @@ class EventBus:
                     if message["type"] == "message":
                         await self._handle_message(message)
 
-            except Exception as e:
+            except Exception:
                 await asyncio.sleep(1)
 
     async def _handle_message(self, message: dict) -> None:
@@ -117,7 +117,7 @@ class EventBus:
             for handler in handlers:
                 await handler(event)
 
-        except Exception as e:
+        except Exception:
             # Log error
             pass
 

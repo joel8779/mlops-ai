@@ -8,7 +8,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.analytics.pipelines import AnalyticsPipeline, AnalyticsMetric
+from app.analytics.pipelines import AnalyticsPipeline
 
 
 @dataclass

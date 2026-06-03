@@ -2,7 +2,7 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 
-from app.models.domain import CandidateBookmark, CandidatePipelineStage, RecruiterActivity, RecruiterNote
+from app.models.domain import CandidatePipelineStage, RecruiterActivity
 from app.repositories.base import BaseRepository
 
 

@@ -2,14 +2,12 @@
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.recruiter_agent.agent import AgentAction, RecruiterAgent, AgentResponse
-from app.agents.recruiter_agent.memory import AgentMemory
+from app.agents.recruiter_agent.agent import RecruiterAgent, AgentResponse
 
 
 @dataclass

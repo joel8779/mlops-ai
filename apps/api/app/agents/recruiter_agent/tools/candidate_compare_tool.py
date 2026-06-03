@@ -6,7 +6,6 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.recruiter_agent.tools.registry import Tool
-from app.repositories.candidates import CandidateRepository
 from app.services.llm_recruiter_service import LLMRecruiterService
 
 

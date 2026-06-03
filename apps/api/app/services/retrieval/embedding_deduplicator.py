@@ -1,7 +1,6 @@
 """Embedding Deduplicator - Detect and deduplicate similar embeddings."""
 
 import numpy as np
-from typing import Any, Optional
 from uuid import UUID
 
 

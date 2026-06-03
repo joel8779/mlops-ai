@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from math import exp
 from uuid import UUID
 
 from sqlalchemy import delete, select

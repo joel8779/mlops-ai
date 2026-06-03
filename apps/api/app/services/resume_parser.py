@@ -1,4 +1,4 @@
-from app.services.extraction_service import ExtractionService, ParsedResume, ResumeParseError
+from app.services.extraction_service import ExtractionService
 
 
 class ResumeParser(ExtractionService):

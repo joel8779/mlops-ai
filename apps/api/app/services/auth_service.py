@@ -128,7 +128,6 @@ class AuthService:
     async def update_organization_pin(
         self, auth: AuthContext, payload: UpdateOrganizationPinRequest
     ) -> UpdateOrganizationPinResponse:
-        from app.schemas.auth import AuthContext as AuthContextSchema
         
         # Only admins can update organization PIN
         if "admin" not in auth.roles:

@@ -9,10 +9,8 @@ from typing import Optional
 from app.core.config import settings
 from app.services.llm.providers import (
     GeminiProvider,
-    GenerationOptions,
     ModelRouter,
     ModelType,
-    SafetyLevel,
 )
 from app.services.llm.providers.gemini_provider import LLMResult
 

@@ -1,6 +1,5 @@
 """Model router for intelligent LLM model selection and fallback."""
 
-import random
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional

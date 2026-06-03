@@ -3,9 +3,9 @@
 import asyncio
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
-from typing import Any, AsyncGenerator, Callable, Optional
+from typing import Any, Callable, Optional
 from uuid import UUID, uuid4
 
 from app.core.redis import get_redis_client

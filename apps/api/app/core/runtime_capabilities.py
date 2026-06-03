@@ -1,6 +1,5 @@
 """Runtime capabilities - Check optional dependencies and features."""
 
-import sys
 import importlib.metadata as metadata
 from dataclasses import dataclass
 from enum import Enum
@@ -103,7 +102,7 @@ class RuntimeCapabilities:
         if cls.is_available(capability):
             try:
                 return import_func()
-            except Exception as exc:
+            except Exception:
                 return default
         return default
 

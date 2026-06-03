@@ -8,7 +8,7 @@ from app.repositories.jobs import JobDescriptionRepository
 from app.schemas.ai import AIResponse
 from app.schemas.auth import AuthContext
 from app.services.llm_provider import LLMResult, get_llm_provider
-from app.services.llm.providers import PromptManager, PromptTemplate, ModelType
+from app.services.llm.providers import PromptManager, PromptTemplate
 from app.services.llm.providers.gemini_provider import GenerationOptions
 
 

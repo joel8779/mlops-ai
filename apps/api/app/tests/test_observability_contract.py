@@ -1,14 +1,11 @@
 import json
-from pathlib import Path
 
 from app.core.paths import get_repo_root_cached
 from prometheus_client import REGISTRY
-from app.observability import metrics
 
 
 
 def test_required_aiops_metrics_are_registered():
-    from app.observability import metrics
     names = set()
     for metric in REGISTRY.collect():
         names.add(metric.name)

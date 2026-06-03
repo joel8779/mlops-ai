@@ -1,11 +1,10 @@
 """Secret Manager - Secure secret management and rotation."""
 
 import os
-import json
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Optional
+from typing import Optional
 from uuid import UUID, uuid4
 
 from cryptography.fernet import Fernet

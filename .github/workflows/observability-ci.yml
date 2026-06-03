@@ -36,6 +36,7 @@ env:
   CELERY_RESULT_BACKEND: redis://localhost:6379/2
   QDRANT_URL: http://localhost:6333
   S3_ENDPOINT_URL: http://localhost:9000
+  PYTHONPATH: apps/api
 
 jobs:
   validate:

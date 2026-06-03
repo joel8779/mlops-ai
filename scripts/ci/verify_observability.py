@@ -36,7 +36,12 @@ REQUIRED_METRICS = {
 
 
 def metric_names() -> set[str]:
-    return {sample.name for metric in REGISTRY.collect() for sample in metric.samples}
+    names = set()
+    for metric in REGISTRY.collect():
+        names.add(metric.name)
+        for sample in metric.samples:
+            names.add(sample.name)
+    return names
 
 
 def validate_dashboards() -> list[str]:

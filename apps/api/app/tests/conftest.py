@@ -6,7 +6,6 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.dialects.sqlite.base import SQLiteTypeCompiler
-from sqlalchemy.dialects.sqlite import JSON as SQLiteJSON
 
 from app.main import create_app
 from app.db.session import get_db
@@ -157,7 +156,6 @@ async def cleanup_telemetry():
     """
     yield
     # Clean up any telemetry side effects
-    from prometheus_client import REGISTRY
     # Clear metrics if needed
     # This is a no-op for now but can be expanded
 

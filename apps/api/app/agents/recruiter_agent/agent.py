@@ -10,10 +10,10 @@ from uuid import UUID, uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.recruiter_agent.memory import AgentMemory
-from app.agents.recruiter_agent.planner import TaskPlanner, TaskType
+from app.agents.recruiter_agent.planner import TaskPlanner
 from app.agents.recruiter_agent.tools import ToolRegistry
 from app.services.llm.providers import ModelRouter, ModelType
-from app.services.llm.providers.gemini_provider import GeminiProvider, LLMResult
+from app.services.llm.providers.gemini_provider import LLMResult
 
 
 class AgentAction(str, Enum):

@@ -1,5 +1,4 @@
 import pytest
-from uuid import uuid4
 
 from app.models.domain import Candidate, Organization, Resume, ResumeStatus, User
 from app.schemas.auth import AuthContext

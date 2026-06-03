@@ -7,7 +7,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analytics.aggregations import MetricsAggregator, AggregatedMetric
+from app.analytics.aggregations import MetricsAggregator
 from app.analytics.pipelines import AnalyticsPipeline
 
 

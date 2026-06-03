@@ -2,9 +2,7 @@
 
 import hashlib
 import json
-from datetime import datetime, timezone, timedelta
 from typing import Any, Optional
-from uuid import UUID
 
 from app.core.redis import get_redis_client
 

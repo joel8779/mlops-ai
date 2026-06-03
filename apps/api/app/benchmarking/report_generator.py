@@ -109,11 +109,11 @@ class ReportGenerator:
         lines = [
             f"# {report.title}",
             f"\nGenerated at: {report.generated_at.isoformat()}",
-            f"\n## Summary",
+            "\n## Summary",
             f"- Total Evaluations: {report.summary['total_evaluations']}",
             f"- Successful Evaluations: {report.summary['successful_evaluations']}",
             f"- Success Rate: {report.summary['success_rate']:.2%}",
-            f"\n## Evaluations",
+            "\n## Evaluations",
         ]
 
         for eval in report.evaluations:

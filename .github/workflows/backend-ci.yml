@@ -28,6 +28,7 @@ env:
   QDRANT_URL: http://localhost:6333
   S3_ENDPOINT_URL: http://localhost:9000
   OTEL_TRACES_EXPORTER: none
+  PYTHONPATH: apps/api
 
 jobs:
   test:

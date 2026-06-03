@@ -1,9 +1,8 @@
 """Evaluation Suite - Comprehensive AI evaluation."""
 
-import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession

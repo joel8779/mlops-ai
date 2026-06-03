@@ -1,9 +1,6 @@
 """Query Optimizer - Optimize database queries."""
 
-from typing import Any, Optional
-from sqlalchemy import select, and_, or_
 from sqlalchemy.orm import joinedload, selectinload
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class QueryOptimizer:

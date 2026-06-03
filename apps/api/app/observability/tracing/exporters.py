@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor, SpanExporter
+from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SpanExporter
 
 from app.core.config import settings
 

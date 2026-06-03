@@ -9,7 +9,6 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
-from sqlalchemy.orm import selectinload
 
 from app.models.domain import Candidate, JobDescription, CandidatePipelineStage, CandidateSkill, RankingFeedback
 

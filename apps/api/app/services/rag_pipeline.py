@@ -5,7 +5,7 @@ from app.schemas.auth import AuthContext
 from app.advanced_rag.context_compressor import ContextCompressor
 from app.advanced_rag.reranking_service import RAGRerankingService
 from app.advanced_rag.retrieval_router import RetrievalRouter
-from app.services.llm_provider import LLMResult, get_llm_provider
+from app.services.llm_provider import get_llm_provider
 from app.services.prompt_templates import COPILOT_PROMPT, RECRUITER_SYSTEM_PROMPT
 from app.security.prompt_injection import sanitize_recruiter_prompt
 

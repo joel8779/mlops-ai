@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis import get_redis_client
 

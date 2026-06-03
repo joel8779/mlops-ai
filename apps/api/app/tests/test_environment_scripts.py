@@ -1,6 +1,5 @@
 import subprocess
 import sys
-from pathlib import Path
 
 from app.core.paths import get_repo_root_cached
 
