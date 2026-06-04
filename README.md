@@ -56,7 +56,6 @@ The **AI Resume Intelligence Platform** is built to modernize high-scale recruit
   - Skill overlap (Jaccard similarity index on normalized candidate skills vs. job requirements).
   - Experience timeline matching (years of experience comparison).
   - Keyword density metrics.
-- **RAG Recruiter Copilot**: Interactive assistant allowing recruiters to ask natural language questions (e.g. *"Show me candidates with experience scaling PyTorch models"*) with citations and confidence metrics.
 - **Recruiter Command Center**: Interactive kanban board for moving applicants across stages (`ranked`, `shortlisted`, `interviewing`, `rejected`, `hired`), logging notes, and activity auditing.
 - **Security-First Foundations**: Magic-number file scanners, Redis-based sliding window rate-limiting, double JWT token authentication (access + refresh), and PII masking.
 
